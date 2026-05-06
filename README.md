@@ -1,0 +1,363 @@
+# JX JARVIS
+
+JX JARVIS is a futuristic Windows desktop AI assistant built with Electron, React, TailwindCSS, Framer Motion, Python, Groq, SpeechRecognition, and Edge-TTS.
+
+It runs as a real desktop app, listens through your microphone, wakes up when you say `Hey Jarvis`, sends commands to Groq, speaks back with a realistic voice, and can run safe allowlisted Windows tasks.
+
+## Features
+
+- Real Windows desktop app with Electron
+- Futuristic compact Jarvis-style interface
+- Wake word mode: `Hey Jarvis`
+- Push-to-talk microphone button
+- Text command console
+- Groq AI responses
+- Edge-TTS voice output
+- File upload and local file intake
+- Safe Windows actions like opening Calculator, Explorer, YouTube, music, notes, and Desktop scan
+- Production build support with Electron Builder
+
+## Important Security Note
+
+Never commit your real API keys.
+
+This project uses a local `.env` file for secrets. The real `.env` file is ignored by Git through `.gitignore`. Only `.env.example` is safe to upload.
+
+If you ever pasted a real key into GitHub, immediately rotate that key in your Groq dashboard.
+
+## Tech Stack
+
+Frontend:
+
+- React
+- Vite
+- TailwindCSS
+- Framer Motion
+- Lucide React icons
+
+Desktop:
+
+- Electron
+- Electron Builder
+
+Backend:
+
+- Python
+- Flask
+- Waitress
+- SpeechRecognition
+- sounddevice
+- Edge-TTS
+- playsound
+
+AI:
+
+- Groq API
+
+## Project Structure
+
+```text
+JX-JARVIS/
+├── assets/
+│   ├── icon.ico
+│   ├── splash.png
+│   └── sounds/
+├── backend/
+│   ├── api/
+│   │   ├── file_ingest.py
+│   │   ├── groq_ai.py
+│   │   ├── routes.py
+│   │   ├── schemas.py
+│   │   └── system_tasks.py
+│   ├── app/
+│   │   ├── config.py
+│   │   └── main.py
+│   ├── voice/
+│   │   ├── recognizer.py
+│   │   └── speaker.py
+│   └── requirements.txt
+├── electron/
+│   ├── main.js
+│   ├── preload.js
+│   └── splash.js
+├── frontend/
+│   ├── src/
+│   │   ├── components/
+│   │   ├── lib/
+│   │   ├── App.jsx
+│   │   ├── index.css
+│   │   └── main.jsx
+│   ├── package.json
+│   └── vite.config.js
+├── scripts/
+│   ├── build-backend.ps1
+│   ├── generate-desktop-assets.ps1
+│   ├── setup-backend.ps1
+│   ├── start-backend.ps1
+│   └── start-electron.js
+├── .env.example
+├── .gitignore
+├── package.json
+└── README.md
+```
+
+## Requirements
+
+Install these before running the project:
+
+- Windows 10 or Windows 11
+- Node.js LTS
+- Python 3.11 or newer
+- A Groq API key
+- A working microphone
+- Internet connection for Groq, SpeechRecognition, and Edge-TTS
+
+## Setup
+
+### 1. Clone the repository
+
+```powershell
+git clone https://github.com/jojin1709/Jarvis-assistant.git
+cd Jarvis-assistant
+```
+
+### 2. Install Node and Electron dependencies
+
+```powershell
+npm run install:all
+```
+
+### 3. Set up the Python backend
+
+```powershell
+powershell -ExecutionPolicy Bypass -File .\scripts\setup-backend.ps1
+```
+
+### 4. Create your private environment file
+
+```powershell
+Copy-Item .env.example .env
+```
+
+Open `.env` and add your own Groq key:
+
+```env
+GROQ_API_KEY=your_real_groq_api_key_here
+GROQ_MODEL=llama-3.3-70b-versatile
+JX_JARVIS_VOICE=en-US-GuyNeural
+JX_JARVIS_OWNER_NAME=Jojin
+JX_JARVIS_BACKEND_PORT=8765
+JX_JARVIS_ENABLE_SYSTEM_TASKS=true
+```
+
+Do not upload `.env` to GitHub.
+
+## Run The Desktop App
+
+```powershell
+npm run dev
+```
+
+This starts:
+
+- React/Vite dev server on `127.0.0.1:5173`
+- Electron desktop window
+- Python backend on `127.0.0.1:8765`
+
+The app opens in its own desktop window. You do not need to open a browser tab.
+
+## How To Use
+
+Wake word:
+
+```text
+Hey Jarvis
+```
+
+One-shot commands:
+
+```text
+Hey Jarvis, what time is it
+Hey Jarvis, open YouTube
+Hey Jarvis, open calculator
+Hey Jarvis, search Google for React Electron desktop app
+```
+
+Push-to-talk:
+
+1. Click `Speak`.
+2. Say your command.
+3. Wait for JX JARVIS to respond.
+
+Text command:
+
+1. Type in the command line at the bottom.
+2. Press Enter or click send.
+
+File upload:
+
+1. Click `Upload`.
+2. Select a text, code, image, audio, video, PDF, CSV, JSON, or Markdown file.
+3. JX JARVIS stores it locally and summarizes supported text-like files.
+
+## Supported Local Commands
+
+```text
+open calculator
+open notepad
+open explorer
+open youtube
+open google
+play music
+list desktop
+system status
+create note
+what time is it
+what date is it
+find file README
+search desktop for video
+search google for Groq API
+```
+
+## Safety Model
+
+JX JARVIS does not run arbitrary shell commands from chat.
+
+Local system actions are allowlisted in:
+
+```text
+backend/api/system_tasks.py
+```
+
+To disable local desktop actions, set this in `.env`:
+
+```env
+JX_JARVIS_ENABLE_SYSTEM_TASKS=false
+```
+
+## Build For Production
+
+Build the frontend:
+
+```powershell
+npm run build:frontend
+```
+
+Build the Python backend executable:
+
+```powershell
+npm run build:backend
+```
+
+Create a Windows installer:
+
+```powershell
+npm run dist
+```
+
+The installer is created in:
+
+```text
+release/JX JARVIS-Setup-1.0.0.exe
+```
+
+The `release/` folder is ignored by Git because installers and build output should not be committed.
+
+## Using Secrets In The Installed App
+
+For development, place `.env` in the project root.
+
+For the installed Windows app, create this file:
+
+```text
+%APPDATA%\JX JARVIS\.env
+```
+
+Example full path:
+
+```text
+C:\Users\<your-name>\AppData\Roaming\JX JARVIS\.env
+```
+
+Put your Groq key there using the same format as `.env.example`.
+
+## Troubleshooting
+
+Backend offline:
+
+- Run `npm run backend` to see backend logs.
+- Make sure port `8765` is free.
+- Make sure Python dependencies installed successfully.
+
+No microphone input:
+
+- Enable microphone access in Windows Settings.
+- Check your default input device.
+- Try running the app as a normal desktop app, not inside a restricted terminal.
+
+No Groq response:
+
+- Check that `.env` exists.
+- Check that `GROQ_API_KEY` is valid.
+- Restart the app after editing `.env`.
+
+No voice output:
+
+- Check Windows sound output.
+- Make sure Edge-TTS has internet access.
+- Make sure `playsound` installed correctly.
+
+Electron opens but backend does not respond:
+
+- Run `npm run backend`.
+- In another terminal, run `npm run electron`.
+- Check whether another app is using port `8765`.
+
+## GitHub Upload Guide
+
+If this folder is not a Git repository yet:
+
+```powershell
+git init
+git branch -M main
+git remote add origin https://github.com/jojin1709/Jarvis-assistant.git
+git add .
+git commit -m "Initial JX JARVIS desktop assistant"
+git push -u origin main
+```
+
+Before pushing, check what will be committed:
+
+```powershell
+git status
+```
+
+Make sure these are not listed:
+
+```text
+.env
+node_modules/
+frontend/node_modules/
+backend/.venv/
+backend-dist/
+release/
+backend/runtime/uploads/
+backend/runtime/speech/
+```
+
+## Contributing
+
+Helpful improvements are welcome:
+
+- Better wake-word detection
+- More UI themes
+- More safe local actions
+- Better offline speech recognition
+- Better file understanding
+- Installer improvements
+
+Please keep API keys, local files, generated audio, installers, and personal data out of pull requests.
+
+## License
+
+MIT License. See `LICENSE`.

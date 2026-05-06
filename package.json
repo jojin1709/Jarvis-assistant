@@ -1,0 +1,85 @@
+{
+  "name": "jx-jarvis",
+  "version": "1.0.0",
+  "description": "JX JARVIS futuristic desktop AI assistant powered by Electron, React, Python, Groq, SpeechRecognition, and Edge-TTS.",
+  "author": "JX JARVIS",
+  "main": "electron/main.js",
+  "private": true,
+  "scripts": {
+    "install:all": "npm install && npm --prefix frontend install",
+    "dev": "concurrently -k \"npm --prefix frontend run dev -- --host 127.0.0.1\" \"wait-on tcp:5173 && node scripts/start-electron.js\"",
+    "electron": "node scripts/start-electron.js",
+    "build": "npm run build:frontend",
+    "build:frontend": "npm --prefix frontend run build",
+    "build:backend": "powershell -ExecutionPolicy Bypass -File ./scripts/build-backend.ps1",
+    "build:assets": "powershell -ExecutionPolicy Bypass -File ./scripts/generate-desktop-assets.ps1",
+    "pack": "npm run build:assets && npm run build:frontend && npm run build:backend && electron-builder --dir",
+    "dist": "npm run build:assets && npm run build:frontend && npm run build:backend && electron-builder --win nsis",
+    "preview": "npm --prefix frontend run preview -- --host 127.0.0.1",
+    "backend": "powershell -ExecutionPolicy Bypass -File ./scripts/start-backend.ps1"
+  },
+  "build": {
+    "appId": "com.jx.jarvis",
+    "productName": "JX JARVIS",
+    "copyright": "Copyright © 2026 JX JARVIS",
+    "asar": true,
+    "directories": {
+      "output": "release",
+      "buildResources": "assets"
+    },
+    "files": [
+      "electron/**/*",
+      "frontend/dist/**/*",
+      "package.json"
+    ],
+    "extraResources": [
+      {
+        "from": "assets",
+        "to": "assets",
+        "filter": [
+          "**/*"
+        ]
+      },
+      {
+        "from": "backend-dist",
+        "to": "backend-dist",
+        "filter": [
+          "**/*"
+        ]
+      },
+      {
+        "from": "backend",
+        "to": "backend",
+        "filter": [
+          "app/**/*",
+          "api/**/*",
+          "voice/**/*",
+          "requirements.txt"
+        ]
+      }
+    ],
+    "win": {
+      "target": [
+        "nsis"
+      ],
+      "icon": "icon.ico",
+      "signAndEditExecutable": false,
+      "artifactName": "${productName}-Setup-${version}.${ext}"
+    },
+    "nsis": {
+      "oneClick": false,
+      "perMachine": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true,
+      "shortcutName": "JX JARVIS"
+    }
+  },
+  "devDependencies": {
+    "concurrently": "^9.1.2",
+    "cross-env": "^7.0.3",
+    "electron-builder": "^25.1.8",
+    "electron": "^34.2.0",
+    "wait-on": "^8.0.2"
+  }
+}
