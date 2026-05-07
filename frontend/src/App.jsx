@@ -17,6 +17,7 @@ export default function App() {
   const [now, setNow] = useState(new Date());
   const [mode, setMode] = useState("online");
   const [backendOnline, setBackendOnline] = useState(false);
+  const [userName, setUserName] = useState("User");
   const [wakeEnabled, setWakeEnabled] = useState(true);
   const [languageMode, setLanguageMode] = useState(() => window.localStorage.getItem("jxJarvisLanguageMode") || "auto");
   const [transcript, setTranscript] = useState("Awaiting voice command.");
@@ -46,7 +47,8 @@ export default function App() {
     fx.startup();
     const check = async () => {
       try {
-        await health();
+        const result = await health();
+        setUserName(result.profile?.user_name || "User");
         setBackendOnline(true);
         if (!greetingStarted.current && !window.sessionStorage.getItem("jxJarvisGreeted")) {
           greetingStarted.current = true;
@@ -249,6 +251,7 @@ export default function App() {
                 JX JARVIS
               </h1>
               <p className="mt-1 text-xs uppercase tracking-[0.3em] text-cyanSoft/65">Compact Voice Console</p>
+              <p className="mt-1 text-[11px] uppercase tracking-[0.22em] text-white/35">User: {userName}</p>
             </div>
             <div className="flex flex-wrap items-center gap-2">
               <LanguageMode value={languageMode} disabled={busy} onChange={setLanguageMode} />

@@ -151,7 +151,7 @@ GROQ_MODEL=llama-3.3-70b-versatile
 JX_JARVIS_VOICE=en-US-GuyNeural
 JX_JARVIS_MALAYALAM_VOICE=ml-IN-MidhunNeural
 JX_JARVIS_SPEECH_LANGUAGES=en-IN,ml-IN
-JX_JARVIS_OWNER_NAME=Operator
+JX_JARVIS_OWNER_NAME=User
 JX_JARVIS_BACKEND_PORT=8765
 JX_JARVIS_ENABLE_SYSTEM_TASKS=true
 ```
@@ -221,6 +221,28 @@ git status
 ```
 
 Only commit source code, safe example files, docs, and public assets. Do not commit personal files, secrets, generated speech, uploads, or private media.
+
+## User Name And Local Memory
+
+JX JARVIS does not ship with your personal name, interests, or saved memories. Each person who clones the repo gets their own local memory file at `backend/runtime/memory.json`, and that file is ignored by Git.
+
+Ways to set the current user's name:
+
+```env
+JX_JARVIS_OWNER_NAME=YourName
+```
+
+Or tell Jarvis:
+
+```text
+my name is Alex
+call me Alex
+remember my interest is web development
+what do you remember
+clear memory
+```
+
+If no name is configured or remembered, Jarvis uses the current computer account name when possible, otherwise it says `User`.
 
 ## Run The Desktop App
 

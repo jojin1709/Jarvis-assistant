@@ -42,7 +42,7 @@ export default function SystemActions({ disabled, onRun }) {
     <section className="hud-panel p-4">
       <div className="mb-4 flex items-center justify-between">
         <div>
-          <p className="text-xs uppercase tracking-[0.28em] text-cyanSoft">Operator</p>
+          <p className="text-xs uppercase tracking-[0.28em] text-cyanSoft">Current User</p>
           <p className="mt-1 text-sm text-white/55">Safe local actions</p>
         </div>
         <span className="border border-emerald-300/30 bg-emerald-300/10 px-2 py-1 text-[10px] uppercase tracking-[0.18em] text-emerald-200">

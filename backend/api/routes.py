@@ -12,7 +12,7 @@ from api.language import (
     normalize_language_mode,
     resolve_language,
 )
-from api.memory import handle_memory_command, memory_context
+from api.memory import handle_memory_command, memory_context, profile_summary, user_display_name
 from api.system_tasks import (
     TASKS,
     extract_file_search,
@@ -46,7 +46,7 @@ def set_state(status: str, detail: str) -> None:
 
 @router.get("/health")
 def health():
-    return jsonify(status="online", detail="Backend link established.")
+    return jsonify(status="online", detail="Backend link established.", profile=profile_summary(settings.owner_name))
 
 
 @router.get("/status")
@@ -66,7 +66,7 @@ def startup_greeting() -> str:
         period = "Good night"
 
     return (
-        f"{period}, {settings.owner_name}. JX JARVIS is online. "
+        f"{period}, {user_display_name(settings.owner_name)}. JX JARVIS is online. "
         "Voice systems, Malayalam and English input, file intake, Groq intelligence, and desktop operations are ready."
     )
 
@@ -173,7 +173,13 @@ def run_text_command(
 
     set_state("thinking", "Processing command through Groq neural core.")
     memories = memory_context()
-    prompt = text if not memories else f"Saved memories about the operator:\n{memories}\n\nUser command:\n{text}"
+    user_name = user_display_name(settings.owner_name)
+    profile_line = f"Current user name: {user_name}"
+    prompt = (
+        f"{profile_line}\n\nUser command:\n{text}"
+        if not memories
+        else f"{profile_line}\nSaved local memories about the current user:\n{memories}\n\nUser command:\n{text}"
+    )
     response = ask_groq(prompt, language_instruction=command_language_instruction(language))
     return finish_response(response, language, speak_response, speak_limit=speak_limit)
 
@@ -230,7 +236,7 @@ def wake_listen():
 
     if not command:
         language = resolve_language(transcript, language_mode)
-        response = "അതെ, ഞാൻ കേൾക്കുന്നു." if language == "ml" else f"Yes, {settings.owner_name}. I am listening."
+        response = "അതെ, ഞാൻ കേൾക്കുന്നു." if language == "ml" else f"Yes, {user_display_name(settings.owner_name)}. I am listening."
         set_state("speaking", "Wake word acknowledged.")
         audio_file = str(speaker.speak(response, language=language))
         set_state("online", "Awaiting next command.")

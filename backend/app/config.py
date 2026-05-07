@@ -12,6 +12,14 @@ load_dotenv(PROJECT_DIR / ".env")
 load_dotenv(BACKEND_DIR / ".env")
 
 
+def default_owner_name() -> str:
+    for key in ("JX_JARVIS_OWNER_NAME", "USERNAME", "USER"):
+        value = os.getenv(key, "").strip()
+        if value:
+            return value
+    return "User"
+
+
 @dataclass(frozen=True)
 class Settings:
     groq_api_key: str = os.getenv("GROQ_API_KEY", "")
@@ -23,7 +31,7 @@ class Settings:
         for language in os.getenv("JX_JARVIS_SPEECH_LANGUAGES", "en-IN,ml-IN").split(",")
         if language.strip()
     )
-    owner_name: str = os.getenv("JX_JARVIS_OWNER_NAME", "Operator")
+    owner_name: str = default_owner_name()
     backend_port: int = int(os.getenv("JX_JARVIS_BACKEND_PORT", "8765"))
     speech_dir: Path = BACKEND_DIR / "runtime" / "speech"
     uploads_dir: Path = BACKEND_DIR / "runtime" / "uploads"
