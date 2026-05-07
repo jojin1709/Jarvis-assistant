@@ -9,8 +9,8 @@ from pathlib import Path, PurePosixPath
 
 
 CODE_ROOT = Path.home() / "Desktop" / "JX-JARVIS-Code"
-MAX_FILES = 8
-MAX_FILE_CHARS = 30000
+MAX_FILES = 10
+MAX_FILE_CHARS = 60000
 
 
 CODE_TRIGGERS = (
@@ -218,10 +218,16 @@ def create_portfolio_project(user_request: str) -> str:
 
 def create_code_project(user_request: str, model_response: str) -> str:
     spec = _parse_project_spec(model_response)
-    project_name = _safe_project_name(spec.get("project_name") or user_request)
-    project_dir = _new_project_dir(project_name)
-
     files = spec.get("files") if isinstance(spec.get("files"), list) else []
+
+    fallback = _quality_fallback_for_request(user_request, files)
+    if fallback:
+        project_name, summary, files = fallback
+        spec["summary"] = summary
+    else:
+        project_name = _safe_project_name(spec.get("project_name") or user_request)
+
+    project_dir = _new_project_dir(project_name)
     written = _write_files(project_dir, files)
 
     if not written:
@@ -276,6 +282,722 @@ def _write_files(project_dir: Path, files: list[dict]) -> list[Path]:
     return written
 
 
+def _quality_fallback_for_request(user_request: str, files: list[dict]) -> tuple[str, str, list[dict]] | None:
+    normalized = user_request.lower()
+
+    if _is_snake_game_request(normalized) and _is_weak_generated_project(files, minimum_chars=5200):
+        return (
+            "premium-snake-game",
+            "Playable polished Snake web game with score, controls, restart flow, and responsive canvas.",
+            _snake_game_files(),
+        )
+
+    if _is_website_request(normalized) and _is_weak_generated_project(files, minimum_chars=5200):
+        return (
+            "premium-website",
+            "Premium responsive website with real sections, interactive filtering, pricing, testimonials, and contact form.",
+            _premium_website_files(user_request),
+        )
+
+    return None
+
+
+def _is_website_request(normalized: str) -> bool:
+    return any(word in normalized for word in ("website", "web site", "webpage", "web page", "landing page", "portfolio"))
+
+
+def _is_snake_game_request(normalized: str) -> bool:
+    return "snake" in normalized and any(word in normalized for word in ("game", "website", "web", "app", "code"))
+
+
+def _is_weak_generated_project(files: list[dict], minimum_chars: int) -> bool:
+    if not files:
+        return True
+
+    paths = [str(item.get("path") or "").lower() for item in files if isinstance(item, dict)]
+    contents = [str(item.get("content") or "") for item in files if isinstance(item, dict)]
+    combined = "\n".join(contents).lower()
+
+    placeholder_terms = (
+        "project 1",
+        "project 2",
+        "this is a description",
+        "welcome to my portfolio website",
+        "lorem ipsum",
+        "todo:",
+        "your content here",
+        "example@example.com",
+    )
+    has_html = any(path.endswith((".html", ".htm")) for path in paths)
+    has_css = any(path.endswith(".css") for path in paths) or "<style" in combined
+    has_js = any(path.endswith(".js") for path in paths) or "<script" in combined
+    has_placeholder = any(term in combined for term in placeholder_terms)
+
+    if has_placeholder:
+        return True
+    if len(combined) < minimum_chars:
+        return True
+    if has_html and not has_css:
+        return True
+    if ("game" in combined or "snake" in combined) and not has_js:
+        return True
+
+    return False
+
+
+def _premium_website_files(user_request: str) -> list[dict]:
+    title = "Nova Studio"
+    return [
+        {
+            "path": "index.html",
+            "content": f"""<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>{title} - Premium Website</title>
+    <link rel="stylesheet" href="styles.css" />
+  </head>
+  <body>
+    <header class="topbar">
+      <a class="brand" href="#home"><span>N</span>{title}</a>
+      <nav aria-label="Main navigation">
+        <a href="#work">Work</a>
+        <a href="#services">Services</a>
+        <a href="#pricing">Pricing</a>
+        <a href="#contact">Contact</a>
+      </nav>
+      <button class="icon-button" id="themeButton" type="button" aria-label="Toggle theme">Theme</button>
+    </header>
+
+    <main id="home">
+      <section class="hero">
+        <div class="hero-copy">
+          <p class="eyebrow">Strategy - Design - Code</p>
+          <h1>High-converting digital experiences built with premium detail.</h1>
+          <p>
+            {title} turns ambitious ideas into fast, responsive websites with strong messaging,
+            polished visuals, and interactions that feel ready for real users.
+          </p>
+          <div class="actions">
+            <a class="button primary" href="#contact">Start a Project</a>
+            <a class="button secondary" href="#work">See Work</a>
+          </div>
+        </div>
+        <aside class="hero-panel" aria-label="Project snapshot">
+          <span class="status">Live build queue open</span>
+          <strong>Request understood</strong>
+          <p>{user_request[:160]}</p>
+          <div class="score-grid">
+            <div><b>98</b><span>Performance</span></div>
+            <div><b>24h</b><span>Prototype</span></div>
+            <div><b>4.9</b><span>Client rating</span></div>
+          </div>
+        </aside>
+      </section>
+
+      <section id="work" class="section">
+        <div class="section-title">
+          <p class="eyebrow">Featured Work</p>
+          <h2>Real sections, real content, and a finished feel.</h2>
+        </div>
+        <div class="filters" aria-label="Project filters">
+          <button class="filter active" data-filter="all" type="button">All</button>
+          <button class="filter" data-filter="brand" type="button">Brand</button>
+          <button class="filter" data-filter="saas" type="button">SaaS</button>
+          <button class="filter" data-filter="commerce" type="button">Commerce</button>
+        </div>
+        <div class="project-grid">
+          <article class="project-card" data-kind="brand">
+            <span>Brand System</span>
+            <h3>Pulse Identity</h3>
+            <p>Launch-ready visual identity with a responsive site, motion accents, and conversion copy.</p>
+          </article>
+          <article class="project-card" data-kind="saas">
+            <span>SaaS Dashboard</span>
+            <h3>MetricFlow</h3>
+            <p>Operational dashboard with clean cards, compact data views, and a smooth onboarding path.</p>
+          </article>
+          <article class="project-card" data-kind="commerce">
+            <span>Commerce</span>
+            <h3>Craft Market</h3>
+            <p>Premium storefront concept with product highlights, trust signals, and mobile-first checkout cues.</p>
+          </article>
+        </div>
+      </section>
+
+      <section id="services" class="section services">
+        <div>
+          <p class="eyebrow">Services</p>
+          <h2>Everything needed to ship a sharp web presence.</h2>
+        </div>
+        <div class="service-list">
+          <div><strong>01</strong><h3>Website Design</h3><p>Responsive layouts, brand direction, sections, and content architecture.</p></div>
+          <div><strong>02</strong><h3>Frontend Build</h3><p>Clean HTML/CSS/JS with interactions, accessibility basics, and fast loading.</p></div>
+          <div><strong>03</strong><h3>Automation</h3><p>Forms, local tools, workflow helpers, and simple integrations where useful.</p></div>
+        </div>
+      </section>
+
+      <section id="pricing" class="section">
+        <div class="section-title">
+          <p class="eyebrow">Pricing</p>
+          <h2>Clear packages for different launch speeds.</h2>
+        </div>
+        <div class="pricing-grid">
+          <article><span>Starter</span><h3>$499</h3><p>One polished page, responsive build, contact CTA, and launch checklist.</p></article>
+          <article class="featured"><span>Growth</span><h3>$1,299</h3><p>Multi-section website, animations, case studies, forms, and performance pass.</p></article>
+          <article><span>Custom</span><h3>Quote</h3><p>Advanced flows, dashboards, content systems, integrations, or app prototypes.</p></article>
+        </div>
+      </section>
+
+      <section class="section testimonials">
+        <blockquote>
+          "The final site felt like a real product on day one: fast, premium, and easy for customers to understand."
+        </blockquote>
+        <span>- A happy launch client</span>
+      </section>
+
+      <section id="contact" class="section contact">
+        <div>
+          <p class="eyebrow">Contact</p>
+          <h2>Tell us what you want to build.</h2>
+        </div>
+        <form id="leadForm">
+          <input name="name" placeholder="Your name" required />
+          <input name="email" type="email" placeholder="Email address" required />
+          <select name="budget" required>
+            <option value="">Project budget</option>
+            <option>$500 - $1,000</option>
+            <option>$1,000 - $3,000</option>
+            <option>$3,000+</option>
+          </select>
+          <textarea name="message" placeholder="What should this website do?" required></textarea>
+          <button class="button primary" type="submit">Send Request</button>
+          <p id="formStatus" role="status"></p>
+        </form>
+      </section>
+    </main>
+
+    <footer>Built by JX JARVIS. Replace the brand, prices, and links with your final business details.</footer>
+    <script src="script.js"></script>
+  </body>
+</html>
+""",
+        },
+        {
+            "path": "styles.css",
+            "content": """:root {
+  --bg: #090d14;
+  --panel: rgba(255, 255, 255, 0.08);
+  --panel-strong: rgba(255, 255, 255, 0.14);
+  --text: #f7fbff;
+  --muted: #a7b2c5;
+  --line: rgba(255, 255, 255, 0.14);
+  --accent: #00d4ff;
+  --accent-2: #f8c84e;
+  --shadow: 0 24px 70px rgba(0, 0, 0, 0.34);
+}
+
+body.light {
+  --bg: #f5f7fb;
+  --panel: rgba(255, 255, 255, 0.82);
+  --panel-strong: #ffffff;
+  --text: #101827;
+  --muted: #5c6678;
+  --line: rgba(16, 24, 39, 0.12);
+  --shadow: 0 18px 55px rgba(16, 24, 39, 0.12);
+}
+
+* { box-sizing: border-box; }
+html { scroll-behavior: smooth; }
+body {
+  margin: 0;
+  background:
+    radial-gradient(circle at 15% 0%, rgba(0, 212, 255, 0.25), transparent 30rem),
+    radial-gradient(circle at 85% 10%, rgba(248, 200, 78, 0.16), transparent 24rem),
+    var(--bg);
+  color: var(--text);
+  font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+}
+
+a { color: inherit; text-decoration: none; }
+.topbar {
+  position: sticky;
+  top: 0;
+  z-index: 20;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  padding: 1rem clamp(1rem, 5vw, 4rem);
+  border-bottom: 1px solid var(--line);
+  background: color-mix(in srgb, var(--bg) 86%, transparent);
+  backdrop-filter: blur(18px);
+}
+.brand { display: flex; align-items: center; gap: .6rem; font-weight: 900; }
+.brand span {
+  width: 34px;
+  height: 34px;
+  display: grid;
+  place-items: center;
+  border-radius: 10px;
+  background: linear-gradient(135deg, var(--accent), var(--accent-2));
+  color: #07111f;
+}
+nav { display: flex; gap: clamp(.75rem, 2vw, 1.5rem); color: var(--muted); font-weight: 800; }
+nav a:hover { color: var(--text); }
+.icon-button, .filter {
+  border: 1px solid var(--line);
+  background: var(--panel);
+  color: var(--text);
+  border-radius: 999px;
+  min-height: 40px;
+  padding: 0 .9rem;
+  cursor: pointer;
+  font-weight: 800;
+}
+
+.hero, .section {
+  width: min(1180px, calc(100% - 2rem));
+  margin: 0 auto;
+}
+.hero {
+  min-height: calc(100vh - 72px);
+  display: grid;
+  grid-template-columns: minmax(0, 1.12fr) minmax(300px, .88fr);
+  align-items: center;
+  gap: 2rem;
+  padding: 4rem 0;
+}
+.hero h1, .section h2 {
+  margin: 0 0 1rem;
+  line-height: .96;
+  letter-spacing: -0.06em;
+}
+.hero h1 { font-size: clamp(3.2rem, 7.8vw, 6.8rem); }
+.section h2 { font-size: clamp(2.1rem, 4.3vw, 4.3rem); }
+p { color: var(--muted); line-height: 1.75; }
+.eyebrow {
+  color: var(--accent);
+  font-size: .78rem;
+  font-weight: 900;
+  letter-spacing: .16em;
+  text-transform: uppercase;
+}
+.actions, .filters { display: flex; flex-wrap: wrap; gap: .75rem; margin-top: 1.5rem; }
+.button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 50px;
+  padding: 0 1.1rem;
+  border-radius: 999px;
+  font-weight: 900;
+}
+.primary { background: linear-gradient(135deg, var(--accent), var(--accent-2)); color: #07111f; }
+.secondary { border: 1px solid var(--line); background: var(--panel); }
+
+.hero-panel, .project-card, .service-list div, .pricing-grid article, .testimonials, .contact, form {
+  border: 1px solid var(--line);
+  background: var(--panel);
+  box-shadow: var(--shadow);
+  backdrop-filter: blur(18px);
+}
+.hero-panel { border-radius: 30px; padding: 1.4rem; }
+.status { color: #74f5bd; font-weight: 900; }
+.score-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: .7rem; margin-top: 1rem; }
+.score-grid div { border-radius: 18px; padding: .9rem; background: var(--panel-strong); }
+.score-grid b { display: block; font-size: 1.5rem; }
+.score-grid span { color: var(--muted); font-size: .78rem; font-weight: 800; }
+
+.section { padding: clamp(4rem, 8vw, 7rem) 0; }
+.section-title { max-width: 760px; margin-bottom: 2rem; }
+.project-grid, .pricing-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 1rem; }
+.project-card, .pricing-grid article { border-radius: 26px; padding: 1.35rem; min-height: 245px; }
+.project-card span, .pricing-grid span { color: var(--accent-2); font-size: .8rem; font-weight: 900; text-transform: uppercase; letter-spacing: .12em; }
+.project-card.hide { display: none; }
+.filter.active { background: var(--accent); color: #07111f; border-color: transparent; }
+.services { display: grid; grid-template-columns: .85fr 1.15fr; gap: 2rem; }
+.service-list { display: grid; gap: .85rem; }
+.service-list div { border-radius: 24px; padding: 1.15rem; }
+.service-list strong { color: var(--accent); }
+.featured { transform: translateY(-10px); border-color: color-mix(in srgb, var(--accent) 60%, var(--line)) !important; }
+.testimonials { border-radius: 30px; padding: clamp(2rem, 5vw, 4rem); text-align: center; }
+blockquote { margin: 0 auto 1rem; max-width: 820px; font-size: clamp(1.5rem, 3vw, 2.8rem); line-height: 1.16; letter-spacing: -0.04em; }
+.contact { border-radius: 30px; padding: clamp(1.25rem, 4vw, 2rem); display: grid; grid-template-columns: .8fr 1.2fr; gap: 1rem; }
+form { border-radius: 24px; padding: 1rem; display: grid; gap: .75rem; box-shadow: none; }
+input, select, textarea {
+  width: 100%;
+  border: 1px solid var(--line);
+  border-radius: 16px;
+  background: var(--panel-strong);
+  color: var(--text);
+  min-height: 48px;
+  padding: .9rem;
+  font: inherit;
+}
+textarea { min-height: 120px; resize: vertical; }
+footer { padding: 2rem; text-align: center; color: var(--muted); border-top: 1px solid var(--line); }
+
+@media (max-width: 840px) {
+  nav { display: none; }
+  .hero, .services, .contact, .project-grid, .pricing-grid { grid-template-columns: 1fr; }
+  .hero { min-height: auto; }
+  .score-grid { grid-template-columns: 1fr; }
+  .featured { transform: none; }
+}
+""",
+        },
+        {
+            "path": "script.js",
+            "content": """const themeButton = document.getElementById("themeButton");
+const savedTheme = localStorage.getItem("nova-theme");
+
+if (savedTheme === "light") {
+  document.body.classList.add("light");
+}
+
+themeButton.addEventListener("click", () => {
+  document.body.classList.toggle("light");
+  localStorage.setItem("nova-theme", document.body.classList.contains("light") ? "light" : "dark");
+});
+
+document.querySelectorAll(".filter").forEach((button) => {
+  button.addEventListener("click", () => {
+    document.querySelectorAll(".filter").forEach((item) => item.classList.remove("active"));
+    button.classList.add("active");
+
+    const filter = button.dataset.filter;
+    document.querySelectorAll(".project-card").forEach((card) => {
+      card.classList.toggle("hide", filter !== "all" && card.dataset.kind !== filter);
+    });
+  });
+});
+
+document.getElementById("leadForm").addEventListener("submit", (event) => {
+  event.preventDefault();
+  const data = new FormData(event.currentTarget);
+  const name = data.get("name");
+  document.getElementById("formStatus").textContent = `Thanks, ${name}. Your project brief is ready to send.`;
+  event.currentTarget.reset();
+});
+""",
+        },
+    ]
+
+
+def _snake_game_files() -> list[dict]:
+    return [
+        {
+            "path": "index.html",
+            "content": """<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Neon Snake Arena</title>
+    <link rel="stylesheet" href="styles.css" />
+  </head>
+  <body>
+    <main class="shell">
+      <section class="intro">
+        <p class="eyebrow">Arcade Web Game</p>
+        <h1>Neon Snake Arena</h1>
+        <p>Eat energy cores, grow longer, dodge your own trail, and push for a new high score.</p>
+        <div class="controls">
+          <button id="startButton" type="button">Start</button>
+          <button id="pauseButton" type="button">Pause</button>
+          <button id="restartButton" type="button">Restart</button>
+        </div>
+      </section>
+
+      <section class="game-card">
+        <div class="hud">
+          <div><span>Score</span><strong id="score">0</strong></div>
+          <div><span>Best</span><strong id="best">0</strong></div>
+          <div><span>Status</span><strong id="status">Ready</strong></div>
+        </div>
+        <canvas id="board" width="560" height="560" aria-label="Snake game board"></canvas>
+        <p class="hint">Use arrow keys or WASD. On mobile, swipe the board.</p>
+      </section>
+    </main>
+    <script src="script.js"></script>
+  </body>
+</html>
+""",
+        },
+        {
+            "path": "styles.css",
+            "content": """:root {
+  --bg: #071018;
+  --panel: rgba(255, 255, 255, 0.08);
+  --line: rgba(255, 255, 255, 0.14);
+  --text: #f6fbff;
+  --muted: #9fb0c4;
+  --accent: #39ffbc;
+  --danger: #ff4d7d;
+}
+
+* { box-sizing: border-box; }
+body {
+  margin: 0;
+  min-height: 100vh;
+  display: grid;
+  place-items: center;
+  background:
+    radial-gradient(circle at 20% 10%, rgba(57, 255, 188, .24), transparent 24rem),
+    radial-gradient(circle at 80% 20%, rgba(111, 76, 255, .2), transparent 26rem),
+    var(--bg);
+  color: var(--text);
+  font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+}
+
+.shell {
+  width: min(1120px, calc(100% - 2rem));
+  display: grid;
+  grid-template-columns: .8fr 1.2fr;
+  gap: 1.5rem;
+  align-items: center;
+}
+.intro, .game-card {
+  border: 1px solid var(--line);
+  background: var(--panel);
+  border-radius: 28px;
+  padding: clamp(1rem, 4vw, 2rem);
+  box-shadow: 0 28px 90px rgba(0, 0, 0, .35);
+  backdrop-filter: blur(18px);
+}
+.eyebrow {
+  color: var(--accent);
+  font-size: .78rem;
+  font-weight: 900;
+  letter-spacing: .16em;
+  text-transform: uppercase;
+}
+h1 {
+  margin: 0 0 1rem;
+  font-size: clamp(3rem, 8vw, 6.2rem);
+  line-height: .9;
+  letter-spacing: -0.07em;
+}
+p { color: var(--muted); line-height: 1.7; }
+.controls { display: flex; flex-wrap: wrap; gap: .7rem; margin-top: 1.5rem; }
+button {
+  border: 0;
+  border-radius: 999px;
+  min-height: 46px;
+  padding: 0 1rem;
+  cursor: pointer;
+  color: #04110d;
+  background: var(--accent);
+  font-weight: 900;
+}
+button:nth-child(2) { background: #ffd166; }
+button:nth-child(3) { background: #8bb8ff; }
+.hud {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: .75rem;
+  margin-bottom: 1rem;
+}
+.hud div {
+  border: 1px solid var(--line);
+  border-radius: 18px;
+  padding: .85rem;
+  background: rgba(255, 255, 255, .06);
+}
+.hud span { display: block; color: var(--muted); font-size: .78rem; font-weight: 900; text-transform: uppercase; letter-spacing: .1em; }
+.hud strong { font-size: 1.5rem; }
+canvas {
+  display: block;
+  width: 100%;
+  aspect-ratio: 1 / 1;
+  border-radius: 22px;
+  border: 1px solid var(--line);
+  background: #02070b;
+}
+.hint { text-align: center; margin-bottom: 0; }
+
+@media (max-width: 820px) {
+  .shell { grid-template-columns: 1fr; padding: 1rem 0; }
+  .hud { grid-template-columns: 1fr; }
+}
+""",
+        },
+        {
+            "path": "script.js",
+            "content": """const canvas = document.getElementById("board");
+const ctx = canvas.getContext("2d");
+const scoreEl = document.getElementById("score");
+const bestEl = document.getElementById("best");
+const statusEl = document.getElementById("status");
+
+const size = 20;
+const cells = canvas.width / size;
+let snake;
+let food;
+let direction;
+let nextDirection;
+let score;
+let timer;
+let running = false;
+let best = Number(localStorage.getItem("snake-best") || 0);
+bestEl.textContent = best;
+
+function reset() {
+  snake = [{ x: 10, y: 10 }, { x: 9, y: 10 }, { x: 8, y: 10 }];
+  direction = { x: 1, y: 0 };
+  nextDirection = direction;
+  score = 0;
+  scoreEl.textContent = score;
+  statusEl.textContent = "Ready";
+  placeFood();
+  draw();
+}
+
+function placeFood() {
+  do {
+    food = {
+      x: Math.floor(Math.random() * cells),
+      y: Math.floor(Math.random() * cells),
+    };
+  } while (snake.some((part) => part.x === food.x && part.y === food.y));
+}
+
+function start() {
+  if (running) return;
+  running = true;
+  statusEl.textContent = "Playing";
+  timer = setInterval(tick, 92);
+}
+
+function pause() {
+  running = false;
+  clearInterval(timer);
+  statusEl.textContent = "Paused";
+}
+
+function restart() {
+  pause();
+  reset();
+  start();
+}
+
+function tick() {
+  direction = nextDirection;
+  const head = snake[0];
+  const next = { x: head.x + direction.x, y: head.y + direction.y };
+
+  if (
+    next.x < 0 || next.x >= cells ||
+    next.y < 0 || next.y >= cells ||
+    snake.some((part) => part.x === next.x && part.y === next.y)
+  ) {
+    gameOver();
+    return;
+  }
+
+  snake.unshift(next);
+  if (next.x === food.x && next.y === food.y) {
+    score += 10;
+    scoreEl.textContent = score;
+    if (score > best) {
+      best = score;
+      bestEl.textContent = best;
+      localStorage.setItem("snake-best", best);
+    }
+    placeFood();
+  } else {
+    snake.pop();
+  }
+  draw();
+}
+
+function gameOver() {
+  pause();
+  statusEl.textContent = "Game Over";
+  draw();
+  ctx.fillStyle = "rgba(2, 7, 11, .68)";
+  ctx.fillRect(0, 0, canvas.width, canvas.height);
+  ctx.fillStyle = "#f6fbff";
+  ctx.font = "bold 42px system-ui";
+  ctx.textAlign = "center";
+  ctx.fillText("Game Over", canvas.width / 2, canvas.height / 2 - 10);
+  ctx.font = "18px system-ui";
+  ctx.fillText("Press restart to play again", canvas.width / 2, canvas.height / 2 + 28);
+}
+
+function draw() {
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
+  ctx.fillStyle = "#02070b";
+  ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+  ctx.strokeStyle = "rgba(255,255,255,.05)";
+  for (let i = 0; i <= cells; i += 1) {
+    ctx.beginPath();
+    ctx.moveTo(i * size, 0);
+    ctx.lineTo(i * size, canvas.height);
+    ctx.stroke();
+    ctx.beginPath();
+    ctx.moveTo(0, i * size);
+    ctx.lineTo(canvas.width, i * size);
+    ctx.stroke();
+  }
+
+  ctx.fillStyle = "#ff4d7d";
+  roundRect(food.x * size + 3, food.y * size + 3, size - 6, size - 6, 7);
+
+  snake.forEach((part, index) => {
+    ctx.fillStyle = index === 0 ? "#39ffbc" : "#18b98a";
+    roundRect(part.x * size + 2, part.y * size + 2, size - 4, size - 4, 6);
+  });
+}
+
+function roundRect(x, y, width, height, radius) {
+  ctx.beginPath();
+  ctx.roundRect(x, y, width, height, radius);
+  ctx.fill();
+}
+
+function setDirection(x, y) {
+  if (direction.x + x === 0 && direction.y + y === 0) return;
+  nextDirection = { x, y };
+}
+
+document.addEventListener("keydown", (event) => {
+  const key = event.key.toLowerCase();
+  if (key === "arrowup" || key === "w") setDirection(0, -1);
+  if (key === "arrowdown" || key === "s") setDirection(0, 1);
+  if (key === "arrowleft" || key === "a") setDirection(-1, 0);
+  if (key === "arrowright" || key === "d") setDirection(1, 0);
+  if (key === " ") running ? pause() : start();
+});
+
+let touchStart = null;
+canvas.addEventListener("touchstart", (event) => {
+  const touch = event.changedTouches[0];
+  touchStart = { x: touch.clientX, y: touch.clientY };
+});
+canvas.addEventListener("touchend", (event) => {
+  if (!touchStart) return;
+  const touch = event.changedTouches[0];
+  const dx = touch.clientX - touchStart.x;
+  const dy = touch.clientY - touchStart.y;
+  if (Math.abs(dx) > Math.abs(dy)) setDirection(Math.sign(dx), 0);
+  else setDirection(0, Math.sign(dy));
+  touchStart = null;
+});
+
+document.getElementById("startButton").addEventListener("click", start);
+document.getElementById("pauseButton").addEventListener("click", pause);
+document.getElementById("restartButton").addEventListener("click", restart);
+
+reset();
+""",
+        },
+    ]
+
+
 def _portfolio_files() -> list[dict]:
     return [
         {
@@ -301,13 +1023,13 @@ def _portfolio_files() -> list[dict]:
         <a href="#journey">Journey</a>
         <a href="#contact">Contact</a>
       </nav>
-      <button class="theme-toggle" type="button" aria-label="Toggle theme">◐</button>
+      <button class="theme-toggle" type="button" aria-label="Toggle theme">Theme</button>
     </header>
 
     <main>
       <section id="home" class="hero section">
         <div class="hero-copy reveal">
-          <p class="eyebrow">Full-stack developer • UI engineer • Problem solver</p>
+          <p class="eyebrow">Full-stack developer - UI engineer - Problem solver</p>
           <h1>Building polished digital products that feel fast, useful, and alive.</h1>
           <p class="hero-text">
             I craft modern websites, dashboards, automations, and AI-assisted tools with clean interfaces,
@@ -388,7 +1110,7 @@ def _portfolio_files() -> list[dict]:
 
       <section id="contact" class="section contact reveal">
         <p class="eyebrow">Contact</p>
-        <h2>Let’s build something excellent.</h2>
+        <h2>Let's build something excellent.</h2>
         <p>Replace these links with your real email, GitHub, LinkedIn, and resume.</p>
         <div class="contact-actions">
           <a class="button primary" href="mailto:you@example.com">Email Me</a>
@@ -398,7 +1120,7 @@ def _portfolio_files() -> list[dict]:
       </section>
     </main>
 
-    <footer>© <span id="year"></span> Your Name. Built with focus.</footer>
+    <footer>(c) <span id="year"></span> Your Name. Built with focus.</footer>
     <script src="script.js"></script>
   </body>
 </html>

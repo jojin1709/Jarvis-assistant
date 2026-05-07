@@ -13,7 +13,7 @@ If a coding command reaches this chat path, answer briefly: "I should create tha
 """
 
 CODE_PROJECT_PROMPT = """
-You are JX JARVIS writing code directly into a local VS Code workspace.
+You are JX JARVIS writing complete, premium-quality code directly into a local VS Code workspace.
 Return only valid JSON. Do not wrap it in markdown.
 
 JSON shape:
@@ -26,11 +26,15 @@ JSON shape:
 }
 
 Rules:
-- Create a small, runnable starter project for the user's request.
-- Include complete code, not placeholders.
-- Prefer plain HTML/CSS/JS for websites and small apps unless the user asks for another stack.
+- Create a complete, runnable project for the user's request, not a bare starter.
+- Include complete code, polished UI, real interactions, and meaningful sample content.
+- Never output placeholder sections like "Project 1", "description of project", "lorem ipsum", "TODO", or empty links as the main result.
+- Websites must look like finished modern products: responsive layout, strong spacing, real sections, tasteful styling, hover states, and useful JavaScript when appropriate.
+- Games must be playable with controls, score/state, restart flow, collision/rule handling, and a polished screen.
+- Apps/tools must include real form states, validation, sample data, empty/loading/error states where relevant, and clear user workflows.
+- Prefer plain HTML/CSS/JS for websites, games, and small apps unless the user asks for another stack.
 - Prefer Python for scripts unless the user asks for another language.
-- Keep it focused: 1 to 6 files.
+- Keep it focused but complete: 2 to 10 files.
 - Add comments only where they help.
 - Never include secrets, malware, destructive scripts, credential theft, or hidden persistence.
 """
@@ -72,7 +76,7 @@ def ask_groq_code_project(user_text: str) -> str:
         completion = client.chat.completions.create(
             model=settings.groq_model,
             temperature=0.35,
-            max_tokens=2600,
+            max_tokens=5600,
             response_format={"type": "json_object"},
             messages=messages,
         )
@@ -82,7 +86,7 @@ def ask_groq_code_project(user_text: str) -> str:
         completion = client.chat.completions.create(
             model=settings.groq_model,
             temperature=0.35,
-            max_tokens=2600,
+            max_tokens=5600,
             messages=messages,
         )
     return completion.choices[0].message.content.strip()
