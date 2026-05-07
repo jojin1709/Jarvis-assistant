@@ -158,6 +158,47 @@ JX_JARVIS_ENABLE_SYSTEM_TASKS=true
 
 Do not upload `.env` to GitHub.
 
+## How To Get A Groq API Key
+
+JX JARVIS uses Groq for AI replies. You need your own Groq API key before the assistant can answer AI commands.
+
+1. Open the official Groq API Keys page:
+
+```text
+https://console.groq.com/keys
+```
+
+2. Sign up or log in to GroqCloud.
+3. Click `Create API Key`.
+4. Give the key a clear name, for example `JX JARVIS Desktop`.
+5. Copy the key immediately. Groq will not show the full key again after you leave the page.
+6. In this project, copy `.env.example` to `.env` if you have not already done it:
+
+```powershell
+Copy-Item .env.example .env
+```
+
+7. Open `.env` and paste your key here:
+
+```env
+GROQ_API_KEY=paste_your_real_groq_key_here
+```
+
+8. Save `.env`, then restart JX JARVIS.
+
+Official Groq docs:
+
+- API Keys: https://console.groq.com/keys
+- Quickstart: https://console.groq.com/docs/quickstart
+- Security guidance: https://console.groq.com/docs/production-readiness/security-onboarding
+
+Security rules:
+
+- Never paste your real API key into GitHub, screenshots, Discord, YouTube, or public chat.
+- Never put the key inside frontend React code.
+- Keep it only in `.env` for development or `%APPDATA%\JX JARVIS\.env` for the installed app.
+- If a key is leaked, revoke it in GroqCloud and create a new one.
+
 ## Run The Desktop App
 
 ```powershell
