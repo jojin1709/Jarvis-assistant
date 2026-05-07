@@ -1,7 +1,7 @@
 from flask import Blueprint, jsonify, request
 
 from api.approvals import resolve_approval
-from api.code_writer import create_code_project, extract_code_request
+from api.code_writer import create_code_project, create_portfolio_project, extract_code_request, is_portfolio_request
 from api.file_ingest import save_and_analyze
 from api.groq_ai import ask_groq, ask_groq_code_project
 from api.language import (
@@ -135,8 +135,11 @@ def run_text_command(
     code_request = extract_code_request(command_text)
     if code_request:
         set_state("coding", "Generating code workspace and opening VS Code.")
-        model_response = ask_groq_code_project(code_request)
-        response = create_code_project(code_request, model_response)
+        if is_portfolio_request(code_request):
+            response = create_portfolio_project(code_request)
+        else:
+            model_response = ask_groq_code_project(code_request)
+            response = create_code_project(code_request, model_response)
         return finish_response(response, language, speak_response, speak_limit=450)
 
     youtube_query = extract_youtube_search(command_text)
