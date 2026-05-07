@@ -4,6 +4,7 @@ import CompactFeed from "./components/CompactFeed.jsx";
 import CompactStatus from "./components/CompactStatus.jsx";
 import CommandConsole from "./components/CommandConsole.jsx";
 import CoreStage from "./components/CoreStage.jsx";
+import LanguageMode from "./components/LanguageMode.jsx";
 import QuickDock from "./components/QuickDock.jsx";
 import WindowTitleBar from "./components/WindowTitleBar.jsx";
 import { chatCommand, greetCommand, health, listenCommand, runSystemTask, uploadFile, wakeListen } from "./lib/api.js";
@@ -17,6 +18,7 @@ export default function App() {
   const [mode, setMode] = useState("online");
   const [backendOnline, setBackendOnline] = useState(false);
   const [wakeEnabled, setWakeEnabled] = useState(true);
+  const [languageMode, setLanguageMode] = useState(() => window.localStorage.getItem("jxJarvisLanguageMode") || "auto");
   const [transcript, setTranscript] = useState("Awaiting voice command.");
   const [response, setResponse] = useState(startupMessage);
   const [history, setHistory] = useState([]);
@@ -35,6 +37,10 @@ export default function App() {
   useEffect(() => {
     modeRef.current = mode;
   }, [mode]);
+
+  useEffect(() => {
+    window.localStorage.setItem("jxJarvisLanguageMode", languageMode);
+  }, [languageMode]);
 
   useEffect(() => {
     fx.startup();
@@ -85,7 +91,7 @@ export default function App() {
 
         try {
           setMode("wake");
-          const result = await wakeListen(2.8);
+          const result = await wakeListen(2.8, languageMode);
           if (cancelled) break;
 
           if (!result.awakened) {
@@ -106,7 +112,7 @@ export default function App() {
           if (result.status === "awake") {
             setMode("listening");
             setResponse("Wake phrase confirmed. Listening for your command...");
-            const followUp = await listenCommand();
+            const followUp = await listenCommand(languageMode);
             if (cancelled) break;
             fx.response();
             setTranscript(followUp.transcript);
@@ -132,7 +138,7 @@ export default function App() {
     return () => {
       cancelled = true;
     };
-  }, [backendOnline, wakeEnabled]);
+  }, [backendOnline, wakeEnabled, languageMode]);
 
   const activeWave = useMemo(() => busy || mode === "online" || mode === "wake", [busy, mode]);
 
@@ -145,7 +151,7 @@ export default function App() {
     setResponse("Microphone channel open.");
 
     try {
-      const result = await listenCommand();
+      const result = await listenCommand(languageMode);
       fx.response();
       setTranscript(result.transcript);
       setResponse(result.response);
@@ -168,7 +174,7 @@ export default function App() {
     setResponse("Processing command...");
 
     try {
-      const result = await chatCommand(text, true);
+      const result = await chatCommand(text, true, languageMode);
       fx.response();
       setResponse(result.response);
       setHistory((items) => [{ transcript: text, response: result.response }, ...items].slice(0, 5));
@@ -244,7 +250,10 @@ export default function App() {
               </h1>
               <p className="mt-1 text-xs uppercase tracking-[0.3em] text-cyanSoft/65">Compact Voice Console</p>
             </div>
-            <CompactStatus mode={mode} backendOnline={backendOnline} wakeEnabled={wakeEnabled} now={now} />
+            <div className="flex flex-wrap items-center gap-2">
+              <LanguageMode value={languageMode} disabled={busy} onChange={setLanguageMode} />
+              <CompactStatus mode={mode} backendOnline={backendOnline} wakeEnabled={wakeEnabled} now={now} />
+            </div>
           </header>
 
           <div className="grid flex-1 grid-cols-1 gap-4 lg:grid-cols-[minmax(360px,1fr)_420px]">

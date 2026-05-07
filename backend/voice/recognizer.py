@@ -27,7 +27,7 @@ class VoiceRecognizer:
         self.recognizer.energy_threshold = 320
         self.recognizer.dynamic_energy_threshold = True
 
-    def listen_once(self, duration: int = 6, sample_rate: int = 16000) -> str:
+    def listen_once(self, duration: int = 6, sample_rate: int = 16000, language_mode: str = "auto") -> str:
         recording = sd.rec(
             int(duration * sample_rate),
             samplerate=sample_rate,
@@ -37,8 +37,15 @@ class VoiceRecognizer:
         sd.wait()
         audio = sr.AudioData(recording.tobytes(), sample_rate, 2)
 
+        if language_mode == "en":
+            languages = ("en-IN", "en-US")
+        elif language_mode == "ml":
+            languages = ("ml-IN",)
+        else:
+            languages = settings.speech_languages
+
         candidates: list[tuple[str, str, float]] = []
-        for language in settings.speech_languages:
+        for language in languages:
             try:
                 result = self.recognizer.recognize_google(audio, language=language, show_all=True)
                 best = _best_google_result(result)

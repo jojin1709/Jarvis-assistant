@@ -28,14 +28,17 @@ export function getStatus() {
   return request("/api/status");
 }
 
-export function listenCommand() {
-  return request("/api/assistant/listen", { method: "POST" });
+export function listenCommand(language = "auto") {
+  return request("/api/assistant/listen", {
+    method: "POST",
+    body: JSON.stringify({ language }),
+  });
 }
 
-export function wakeListen(duration = 3.2) {
+export function wakeListen(duration = 3.2, language = "auto") {
   return request("/api/assistant/wake-listen", {
     method: "POST",
-    body: JSON.stringify({ duration }),
+    body: JSON.stringify({ duration, language }),
   });
 }
 
@@ -43,10 +46,10 @@ export function greetCommand() {
   return request("/api/assistant/greet", { method: "POST" });
 }
 
-export function chatCommand(text, speak = true) {
+export function chatCommand(text, speak = true, language = "auto") {
   return request("/api/assistant/chat", {
     method: "POST",
-    body: JSON.stringify({ text, speak }),
+    body: JSON.stringify({ text, speak, language }),
   });
 }
 

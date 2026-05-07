@@ -4,7 +4,14 @@ from api.approvals import resolve_approval
 from api.code_writer import create_code_project, extract_code_request
 from api.file_ingest import save_and_analyze
 from api.groq_ai import ask_groq, ask_groq_code_project
-from api.language import command_language_instruction, detect_language, localize_response, normalize_command_to_english
+from api.language import (
+    command_language_instruction,
+    detect_language,
+    localize_response,
+    normalize_command_to_english,
+    normalize_language_mode,
+    resolve_language,
+)
 from api.memory import handle_memory_command, memory_context
 from api.system_tasks import (
     TASKS,
@@ -106,8 +113,13 @@ def finish_response(response: str, language: str, speak_response: bool, speak_li
     return {"response": localized, "audio_file": audio_file}
 
 
-def run_text_command(text: str, speak_response: bool = True, speak_limit: int | None = None) -> dict[str, str | None]:
-    language = detect_language(text)
+def run_text_command(
+    text: str,
+    speak_response: bool = True,
+    speak_limit: int | None = None,
+    language_mode: str = "auto",
+) -> dict[str, str | None]:
+    language = resolve_language(text, language_mode)
     command_text = normalize_command_to_english(text, language)
 
     approval_response = resolve_approval(command_text)
@@ -168,11 +180,12 @@ def chat():
     payload = request.get_json(silent=True) or {}
     text = str(payload.get("text", "")).strip()
     speak_response = bool(payload.get("speak", True))
+    language_mode = normalize_language_mode(payload.get("language", "auto"))
 
     if not text:
         return jsonify(error="Text command is required."), 400
 
-    result = run_text_command(text, speak_response=speak_response)
+    result = run_text_command(text, speak_response=speak_response, language_mode=language_mode)
     return jsonify(
         transcript=text,
         response=result["response"],
@@ -183,10 +196,13 @@ def chat():
 
 @router.post("/assistant/listen")
 def listen():
-    set_state("listening", "Microphone input active.")
-    transcript = recognizer.listen_once()
+    payload = request.get_json(silent=True) or {}
+    language_mode = normalize_language_mode(payload.get("language", "auto"))
 
-    result = run_text_command(transcript, speak_response=True)
+    set_state("listening", "Microphone input active.")
+    transcript = recognizer.listen_once(language_mode=language_mode)
+
+    result = run_text_command(transcript, speak_response=True, language_mode=language_mode)
     return jsonify(
         transcript=transcript,
         response=result["response"],
@@ -199,9 +215,10 @@ def listen():
 def wake_listen():
     payload = request.get_json(silent=True) or {}
     duration = float(payload.get("duration", 3.2))
+    language_mode = normalize_language_mode(payload.get("language", "auto"))
 
     set_state("wake", "Wake word monitor active.")
-    transcript = recognizer.listen_once(duration=duration)
+    transcript = recognizer.listen_once(duration=duration, language_mode=language_mode)
     awakened, command = wake_command_from(transcript)
 
     if not awakened:
@@ -209,14 +226,14 @@ def wake_listen():
         return jsonify(awakened=False, transcript=transcript, response="", audio_file=None, status="standby")
 
     if not command:
-        language = detect_language(transcript)
+        language = resolve_language(transcript, language_mode)
         response = "അതെ, ഞാൻ കേൾക്കുന്നു." if language == "ml" else f"Yes, {settings.owner_name}. I am listening."
         set_state("speaking", "Wake word acknowledged.")
         audio_file = str(speaker.speak(response, language=language))
         set_state("online", "Awaiting next command.")
         return jsonify(awakened=True, transcript=transcript, response=response, audio_file=audio_file, status="awake")
 
-    result = run_text_command(command, speak_response=True, speak_limit=900)
+    result = run_text_command(command, speak_response=True, speak_limit=900, language_mode=language_mode)
     return jsonify(
         awakened=True,
         transcript=transcript,

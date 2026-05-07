@@ -12,6 +12,22 @@ def detect_language(text: str) -> str:
     return "ml" if MALAYALAM_RE.search(text or "") else "en"
 
 
+def normalize_language_mode(value: object) -> str:
+    mode = str(value or "auto").strip().lower()
+    if mode in {"en", "english"}:
+        return "en"
+    if mode in {"ml", "malayalam"}:
+        return "ml"
+    return "auto"
+
+
+def resolve_language(text: str, language_mode: object = "auto") -> str:
+    mode = normalize_language_mode(language_mode)
+    if mode in {"en", "ml"}:
+        return mode
+    return detect_language(text)
+
+
 def language_name(language: str) -> str:
     return "Malayalam" if language == "ml" else "English"
 
@@ -29,25 +45,28 @@ def normalize_command_to_english(text: str, language: str) -> str:
     if language != "ml" or not settings.groq_api_key:
         return _fallback_malayalam_command(text) if language == "ml" else text
 
-    client = Groq(api_key=settings.groq_api_key)
-    completion = client.chat.completions.create(
-        model=settings.groq_model,
-        temperature=0,
-        max_tokens=180,
-        messages=[
-            {
-                "role": "system",
-                "content": (
-                    "Translate the user's Malayalam command into one short English command for a desktop assistant. "
-                    "Preserve app names, filenames, folder names, and programming language names. "
-                    "Return only the translated command, no explanation."
-                ),
-            },
-            {"role": "user", "content": text},
-        ],
-    )
-    translated = completion.choices[0].message.content.strip().strip('"')
-    return translated or _fallback_malayalam_command(text)
+    try:
+        client = Groq(api_key=settings.groq_api_key)
+        completion = client.chat.completions.create(
+            model=settings.groq_model,
+            temperature=0,
+            max_tokens=180,
+            messages=[
+                {
+                    "role": "system",
+                    "content": (
+                        "Translate the user's Malayalam command into one short English command for a desktop assistant. "
+                        "Preserve app names, filenames, folder names, and programming language names. "
+                        "Return only the translated command, no explanation."
+                    ),
+                },
+                {"role": "user", "content": text},
+            ],
+        )
+        translated = completion.choices[0].message.content.strip().strip('"')
+        return translated or _fallback_malayalam_command(text)
+    except Exception:
+        return _fallback_malayalam_command(text)
 
 
 def localize_response(text: str, language: str) -> str:
@@ -57,24 +76,27 @@ def localize_response(text: str, language: str) -> str:
     if not settings.groq_api_key:
         return text
 
-    client = Groq(api_key=settings.groq_api_key)
-    completion = client.chat.completions.create(
-        model=settings.groq_model,
-        temperature=0.2,
-        max_tokens=450,
-        messages=[
-            {
-                "role": "system",
-                "content": (
-                    "Translate this assistant response into natural Malayalam. "
-                    "Keep file paths, URLs, app names, confirmation tokens, code identifiers, and English commands unchanged. "
-                    "Keep it concise. Return only the translated response."
-                ),
-            },
-            {"role": "user", "content": text},
-        ],
-    )
-    return completion.choices[0].message.content.strip() or text
+    try:
+        client = Groq(api_key=settings.groq_api_key)
+        completion = client.chat.completions.create(
+            model=settings.groq_model,
+            temperature=0.2,
+            max_tokens=450,
+            messages=[
+                {
+                    "role": "system",
+                    "content": (
+                        "Translate this assistant response into natural Malayalam. "
+                        "Keep file paths, URLs, app names, confirmation tokens, code identifiers, and English commands unchanged. "
+                        "Keep it concise. Return only the translated response."
+                    ),
+                },
+                {"role": "user", "content": text},
+            ],
+        )
+        return completion.choices[0].message.content.strip() or text
+    except Exception:
+        return text
 
 
 def _fallback_malayalam_command(text: str) -> str:
