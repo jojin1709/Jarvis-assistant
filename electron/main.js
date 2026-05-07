@@ -4,7 +4,7 @@ const path = require("node:path");
 const { spawn } = require("node:child_process");
 const net = require("node:net");
 
-const { createSplashWindow } = require("./splash");
+const { createSplashWindow, waitForStartupAudio } = require("./splash");
 
 const isPackaged = app.isPackaged;
 const ROOT_DIR = isPackaged ? process.resourcesPath : path.join(__dirname, "..");
@@ -115,6 +115,7 @@ async function startBackend() {
 
 async function createWindow() {
   splashWindow = createSplashWindow();
+  const startupAudioPromise = waitForStartupAudio(splashWindow);
   await startBackend();
 
   mainWindow = new BrowserWindow({
@@ -142,7 +143,8 @@ async function createWindow() {
   mainWindow.on("maximize", () => mainWindow.webContents.send("window:state", { maximized: true }));
   mainWindow.on("unmaximize", () => mainWindow.webContents.send("window:state", { maximized: false }));
 
-  mainWindow.once("ready-to-show", () => {
+  mainWindow.once("ready-to-show", async () => {
+    await startupAudioPromise;
     setTimeout(() => {
       if (splashWindow && !splashWindow.isDestroyed()) splashWindow.close();
       mainWindow.show();
@@ -156,7 +158,7 @@ async function createWindow() {
         mainWindow.setOpacity(opacity);
         if (opacity >= 1) clearInterval(fade);
       }, 16);
-    }, 900);
+    }, 250);
   });
 
   const devUrl = process.env.VITE_DEV_SERVER_URL;

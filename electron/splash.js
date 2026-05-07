@@ -169,4 +169,55 @@ function createSplashWindow() {
   return splash;
 }
 
-module.exports = { createSplashWindow };
+async function waitForStartupAudio(splash, timeoutMs = 18000) {
+  if (!splash || splash.isDestroyed()) return { played: false, reason: "splash missing" };
+
+  try {
+    if (splash.webContents.isLoadingMainFrame()) {
+      await new Promise((resolve) => {
+        splash.webContents.once("did-finish-load", resolve);
+        splash.webContents.once("did-fail-load", resolve);
+      });
+    }
+    if (splash.isDestroyed()) return { played: false, reason: "splash closed" };
+
+    return await splash.webContents.executeJavaScript(
+      `new Promise((resolve) => {
+        const audio = document.getElementById("startup-audio");
+        if (!audio) {
+          resolve({ played: false, reason: "audio file missing" });
+          return;
+        }
+
+        let settled = false;
+        const finish = (result) => {
+          if (settled) return;
+          settled = true;
+          window.clearTimeout(timer);
+          resolve(result);
+        };
+
+        const timer = window.setTimeout(() => finish({ played: false, reason: "audio timeout" }), ${timeoutMs});
+        audio.volume = 1;
+        audio.currentTime = 0;
+        audio.addEventListener("ended", () => finish({ played: true, reason: "ended" }), { once: true });
+        audio.addEventListener("error", () => finish({ played: false, reason: "audio error" }), { once: true });
+
+        audio.play().then(() => {
+          if (audio.ended) finish({ played: true, reason: "ended" });
+        }).catch(() => {
+          const message = document.querySelector("p");
+          if (message) message.textContent = "CLICK ONCE TO PLAY STARTUP AUDIO";
+          window.addEventListener("pointerdown", () => {
+            audio.play().catch(() => finish({ played: false, reason: "audio blocked" }));
+          }, { once: true });
+        });
+      })`,
+      true,
+    );
+  } catch (error) {
+    return { played: false, reason: error.message };
+  }
+}
+
+module.exports = { createSplashWindow, waitForStartupAudio };
