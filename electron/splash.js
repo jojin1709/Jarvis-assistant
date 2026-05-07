@@ -1,6 +1,7 @@
 const { BrowserWindow } = require("electron");
 const fs = require("node:fs");
 const path = require("node:path");
+const { pathToFileURL } = require("node:url");
 
 function splashHtml() {
   const projectRoot = path.join(__dirname, "..");
@@ -13,9 +14,7 @@ function splashHtml() {
     { path: path.join(resourceRoot, "assets", "sounds", "startup.mp3"), mime: "audio/mpeg" },
   ];
   const startupSound = soundCandidates.find((sound) => fs.existsSync(sound.path));
-  const soundSrc = startupSound
-    ? `data:${startupSound.mime};base64,${fs.readFileSync(startupSound.path).toString("base64")}`
-    : "";
+  const soundSrc = startupSound ? pathToFileURL(startupSound.path).toString() : "";
 
   return `<!doctype html>
 <html>
@@ -123,7 +122,22 @@ function splashHtml() {
         <div class="bar"></div>
       </div>
     </div>
-    ${soundSrc ? `<audio src="${soundSrc}" autoplay></audio>` : ""}
+    ${
+      soundSrc
+        ? `<audio id="startup-audio" src="${soundSrc}" autoplay preload="auto"></audio>
+    <script>
+      const audio = document.getElementById("startup-audio");
+      if (audio) {
+        audio.volume = 0.9;
+        audio.play().catch(() => {
+          window.addEventListener("pointerdown", () => audio.play().catch(() => {}), { once: true });
+          window.setTimeout(() => audio.play().catch(() => {}), 250);
+          window.setTimeout(() => audio.play().catch(() => {}), 900);
+        });
+      }
+    </script>`
+        : ""
+    }
   </body>
 </html>`;
 }
