@@ -151,7 +151,7 @@ GROQ_MODEL=llama-3.3-70b-versatile
 JX_JARVIS_VOICE=en-US-GuyNeural
 JX_JARVIS_MALAYALAM_VOICE=ml-IN-MidhunNeural
 JX_JARVIS_SPEECH_LANGUAGES=en-IN,ml-IN
-JX_JARVIS_OWNER_NAME=Jojin
+JX_JARVIS_OWNER_NAME=Operator
 JX_JARVIS_BACKEND_PORT=8765
 JX_JARVIS_ENABLE_SYSTEM_TASKS=true
 ```
@@ -198,6 +198,29 @@ Security rules:
 - Never put the key inside frontend React code.
 - Keep it only in `.env` for development or `%APPDATA%\JX JARVIS\.env` for the installed app.
 - If a key is leaked, revoke it in GroqCloud and create a new one.
+
+## Privacy And Local Files
+
+This repository should contain only the files needed to build and run JX JARVIS on another computer.
+
+These files stay local and are ignored by Git:
+
+- `.env` and all real API keys
+- Generated voice audio in `backend/runtime/speech/`
+- Uploaded files in `backend/runtime/uploads/`
+- Saved local memory in `backend/runtime/memory.json`
+- Generated code projects in `JX-JARVIS-Code/`
+- Local trash/staging folders such as `JX-JARVIS-Trash/`
+- Personal startup audio such as `assets/sounds/startup.wav`, `assets/sounds/startup.mp3`, or root `startup.*`
+- Local downloaded reference images such as `ChatGPT Image*`
+
+Before pushing, run:
+
+```powershell
+git status
+```
+
+Only commit source code, safe example files, docs, and public assets. Do not commit personal files, secrets, generated speech, uploads, or private media.
 
 ## Run The Desktop App
 

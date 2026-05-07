@@ -36,6 +36,14 @@ backend/runtime/*.json
 !backend/runtime/speech/.gitkeep
 !backend/runtime/uploads/.gitkeep
 
+# Local/private media and generated assistant work
+startup.*
+ChatGPT Image*
+assets/sounds/startup.wav
+assets/sounds/startup.mp3
+JX-JARVIS-Code/
+JX-JARVIS-Trash/
+
 # Logs and editor files
 *.log
 npm-debug.log*

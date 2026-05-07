@@ -23,7 +23,7 @@ class Settings:
         for language in os.getenv("JX_JARVIS_SPEECH_LANGUAGES", "en-IN,ml-IN").split(",")
         if language.strip()
     )
-    owner_name: str = os.getenv("JX_JARVIS_OWNER_NAME", "Jojin")
+    owner_name: str = os.getenv("JX_JARVIS_OWNER_NAME", "Operator")
     backend_port: int = int(os.getenv("JX_JARVIS_BACKEND_PORT", "8765"))
     speech_dir: Path = BACKEND_DIR / "runtime" / "speech"
     uploads_dir: Path = BACKEND_DIR / "runtime" / "uploads"
