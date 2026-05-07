@@ -25,7 +25,7 @@ export default function App() {
   const greetingStarted = useRef(false);
   const modeRef = useRef(mode);
   const wakeLoopActive = useRef(false);
-  const busy = ["listening", "thinking", "speaking", "executing", "indexing"].includes(mode);
+  const busy = ["listening", "thinking", "speaking", "executing", "indexing", "coding", "memory"].includes(mode);
 
   useEffect(() => {
     const timer = window.setInterval(() => setNow(new Date()), 1000);

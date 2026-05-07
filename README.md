@@ -15,6 +15,10 @@ It runs as a real desktop app, listens through your microphone, wakes up when yo
 - Edge-TTS voice output
 - File upload and local file intake
 - Safe Windows actions like opening Calculator, Explorer, YouTube, music, notes, and Desktop scan
+- Code-writing commands that create a local workspace and open it in VS Code
+- Persistent local memory for preferences you ask it to remember
+- Safer file actions with confirmation before move, rename, or trash
+- Packaging helpers for building a Windows installer
 - Production build support with Electron Builder
 
 ## Important Security Note
@@ -145,6 +149,8 @@ Open `.env` and add your own Groq key:
 GROQ_API_KEY=your_real_groq_api_key_here
 GROQ_MODEL=llama-3.3-70b-versatile
 JX_JARVIS_VOICE=en-US-GuyNeural
+JX_JARVIS_MALAYALAM_VOICE=ml-IN-MidhunNeural
+JX_JARVIS_SPEECH_LANGUAGES=en-IN,ml-IN
 JX_JARVIS_OWNER_NAME=Jojin
 JX_JARVIS_BACKEND_PORT=8765
 JX_JARVIS_ENABLE_SYSTEM_TASKS=true
@@ -172,6 +178,7 @@ Wake word:
 
 ```text
 Hey Jarvis
+ജാർവിസ്
 ```
 
 One-shot commands:
@@ -180,7 +187,15 @@ One-shot commands:
 Hey Jarvis, what time is it
 Hey Jarvis, open YouTube
 Hey Jarvis, open calculator
+ജാർവിസ്, യൂട്യൂബ് തുറക്കൂ
+ജാർവിസ്, സമയം എത്രയാണ്
+ജാർവിസ്, snake game website ഉണ്ടാക്കൂ
 Hey Jarvis, search Google for React Electron desktop app
+Hey Jarvis, search YouTube for Python projects
+Hey Jarvis, open Chrome
+Hey Jarvis, remember that I prefer React
+Hey Jarvis, write code for a calculator website
+Hey Jarvis, create a Python script to organize downloads
 ```
 
 Push-to-talk:
@@ -208,16 +223,42 @@ open notepad
 open explorer
 open youtube
 open google
+open gmail
+open github
+open whatsapp
+open chrome
+open edge
+take screenshot
 play music
 list desktop
 system status
 create note
+create folder Projects on desktop
+open file resume
+move file report to documents
+rename file old-name to new-name
+delete file temp
+remember that I like Python
+what do you remember
 what time is it
 what date is it
 find file README
 search desktop for video
 search google for Groq API
+search youtube for React tutorial
+open VS Code
+write code for a todo app
+open latest code
+test latest code
 ```
+
+Generated code projects are saved on your Desktop in:
+
+```text
+JX-JARVIS-Code/
+```
+
+Move, rename, and delete commands ask for a confirmation token before they run. Delete moves the item into `Desktop\JX-JARVIS-Trash` instead of permanently deleting it.
 
 ## Safety Model
 
@@ -253,6 +294,12 @@ Create a Windows installer:
 
 ```powershell
 npm run dist
+```
+
+Or double-click:
+
+```text
+Package JX JARVIS.bat
 ```
 
 The installer is created in:

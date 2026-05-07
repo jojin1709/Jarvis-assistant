@@ -1,15 +1,22 @@
 from flask import Blueprint, jsonify, request
 
+from api.approvals import resolve_approval
+from api.code_writer import create_code_project, extract_code_request
 from api.file_ingest import save_and_analyze
-from api.groq_ai import ask_groq
+from api.groq_ai import ask_groq, ask_groq_code_project
+from api.language import command_language_instruction, detect_language, localize_response, normalize_command_to_english
+from api.memory import handle_memory_command, memory_context
 from api.system_tasks import (
     TASKS,
     extract_file_search,
     extract_google_search,
+    extract_youtube_search,
     match_system_command,
     open_google_search,
     run_system_task,
+    run_local_file_action,
     search_user_files,
+    search_youtube,
 )
 from app.config import settings
 from voice.recognizer import VoiceRecognizer
@@ -53,7 +60,7 @@ def startup_greeting() -> str:
 
     return (
         f"{period}, {settings.owner_name}. JX JARVIS is online. "
-        "Voice systems, file intake, Groq intelligence, and desktop operations are ready."
+        "Voice systems, Malayalam and English input, file intake, Groq intelligence, and desktop operations are ready."
     )
 
 
@@ -68,7 +75,18 @@ def greet():
 
 def wake_command_from(text: str) -> tuple[bool, str]:
     normalized = " ".join(text.lower().strip().split())
-    wake_phrases = ("hey jarvis", "hi jarvis", "hello jarvis", "ok jarvis", "okay jarvis", "jarvis")
+    wake_phrases = (
+        "hey jarvis",
+        "hi jarvis",
+        "hello jarvis",
+        "ok jarvis",
+        "okay jarvis",
+        "jarvis",
+        "ഹേ ജാർവിസ്",
+        "ഹായ് ജാർവിസ്",
+        "ജാർവിസ്",
+        "ജാര്‍വിസ്",
+    )
 
     for phrase in wake_phrases:
         if phrase in normalized:
@@ -77,49 +95,72 @@ def wake_command_from(text: str) -> tuple[bool, str]:
     return False, ""
 
 
+def finish_response(response: str, language: str, speak_response: bool, speak_limit: int | None = None) -> dict[str, str | None]:
+    localized = localize_response(response, language)
+    audio_file = None
+    if speak_response:
+        set_state("speaking", "Voice response active.")
+        speech_text = localized[:speak_limit] if speak_limit else localized
+        audio_file = str(speaker.speak(speech_text, language=language))
+    set_state("online", "Awaiting next command.")
+    return {"response": localized, "audio_file": audio_file}
+
+
 def run_text_command(text: str, speak_response: bool = True, speak_limit: int | None = None) -> dict[str, str | None]:
-    google_query = extract_google_search(text)
+    language = detect_language(text)
+    command_text = normalize_command_to_english(text, language)
+
+    approval_response = resolve_approval(command_text)
+    if approval_response:
+        set_state("executing", "Confirmed action executed.")
+        return finish_response(approval_response, language, speak_response, speak_limit=450)
+
+    memory_response = handle_memory_command(command_text)
+    if memory_response:
+        set_state("memory", "Memory updated.")
+        return finish_response(memory_response, language, speak_response, speak_limit=450)
+
+    code_request = extract_code_request(command_text)
+    if code_request:
+        set_state("coding", "Generating code workspace and opening VS Code.")
+        model_response = ask_groq_code_project(code_request)
+        response = create_code_project(code_request, model_response)
+        return finish_response(response, language, speak_response, speak_limit=450)
+
+    youtube_query = extract_youtube_search(command_text)
+    if youtube_query:
+        set_state("executing", f"Searching YouTube for: {youtube_query}.")
+        response = search_youtube(youtube_query)
+        return finish_response(response, language, speak_response)
+
+    google_query = extract_google_search(command_text)
     if google_query:
         set_state("executing", f"Searching Google for: {google_query}.")
         response = open_google_search(google_query)
-        audio_file = None
-        if speak_response:
-            set_state("speaking", "Voice response active.")
-            audio_file = str(speaker.speak(response))
-        set_state("online", "Awaiting next command.")
-        return {"response": response, "audio_file": audio_file}
+        return finish_response(response, language, speak_response)
 
-    file_query = extract_file_search(text)
+    local_file_response = run_local_file_action(command_text)
+    if local_file_response:
+        set_state("executing", "Running local file action.")
+        return finish_response(local_file_response, language, speak_response, speak_limit=450)
+
+    file_query = extract_file_search(command_text)
     if file_query:
         set_state("executing", f"Searching user files for: {file_query}.")
         response = search_user_files(file_query)
-        audio_file = None
-        if speak_response:
-            set_state("speaking", "Voice response active.")
-            audio_file = str(speaker.speak(response[:700]))
-        set_state("online", "Awaiting next command.")
-        return {"response": response, "audio_file": audio_file}
+        return finish_response(response, language, speak_response, speak_limit=700)
 
-    task_id = match_system_command(text)
+    task_id = match_system_command(command_text)
     if task_id:
         set_state("executing", f"Running safe system task: {task_id}.")
         response = run_system_task(task_id)
-        audio_file = None
-        if speak_response:
-            set_state("speaking", "Voice response active.")
-            audio_file = str(speaker.speak(response))
-        set_state("online", "Awaiting next command.")
-        return {"response": response, "audio_file": audio_file}
+        return finish_response(response, language, speak_response)
 
     set_state("thinking", "Processing command through Groq neural core.")
-    response = ask_groq(text)
-    audio_file = None
-    if speak_response:
-        set_state("speaking", "Generating Edge-TTS voice response.")
-        speech_text = response[:speak_limit] if speak_limit else response
-        audio_file = str(speaker.speak(speech_text))
-    set_state("online", "Awaiting next command.")
-    return {"response": response, "audio_file": audio_file}
+    memories = memory_context()
+    prompt = text if not memories else f"Saved memories about the operator:\n{memories}\n\nUser command:\n{text}"
+    response = ask_groq(prompt, language_instruction=command_language_instruction(language))
+    return finish_response(response, language, speak_response, speak_limit=speak_limit)
 
 
 @router.post("/assistant/chat")
@@ -168,9 +209,10 @@ def wake_listen():
         return jsonify(awakened=False, transcript=transcript, response="", audio_file=None, status="standby")
 
     if not command:
-        response = f"Yes, {settings.owner_name}. I am listening."
+        language = detect_language(transcript)
+        response = "അതെ, ഞാൻ കേൾക്കുന്നു." if language == "ml" else f"Yes, {settings.owner_name}. I am listening."
         set_state("speaking", "Wake word acknowledged.")
-        audio_file = str(speaker.speak(response))
+        audio_file = str(speaker.speak(response, language=language))
         set_state("online", "Awaiting next command.")
         return jsonify(awakened=True, transcript=transcript, response=response, audio_file=audio_file, status="awake")
 
@@ -193,7 +235,7 @@ def speak():
         return jsonify(error="Text is required."), 400
 
     set_state("speaking", "Speaking supplied text.")
-    audio_file = speaker.speak(text)
+    audio_file = speaker.speak(text, language=detect_language(text))
     set_state("online", "Awaiting next command.")
     return jsonify(audio_file=str(audio_file), status="complete")
 
@@ -210,6 +252,15 @@ def system_tasks():
             {"id": "create_note", "label": "Create Note"},
             {"id": "open_youtube", "label": "YouTube"},
             {"id": "open_google", "label": "Google"},
+            {"id": "open_gmail", "label": "Gmail"},
+            {"id": "open_github", "label": "GitHub"},
+            {"id": "open_whatsapp", "label": "WhatsApp"},
+            {"id": "open_chrome", "label": "Chrome"},
+            {"id": "open_edge", "label": "Edge"},
+            {"id": "open_vscode", "label": "VS Code"},
+            {"id": "open_latest_code", "label": "Latest Code"},
+            {"id": "test_latest_code", "label": "Test Code"},
+            {"id": "take_screenshot", "label": "Screenshot"},
             {"id": "play_music", "label": "Music"},
             {"id": "current_time", "label": "Time"},
             {"id": "current_date", "label": "Date"},

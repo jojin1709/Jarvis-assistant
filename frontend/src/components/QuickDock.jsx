@@ -1,12 +1,12 @@
-import { Calculator, Clock, FileUp, FolderOpen, Music, NotebookPen, Radio, Search, Youtube } from "lucide-react";
+import { Calculator, Clock, Code2, FileUp, FolderOpen, Music, Radio, Search, Youtube } from "lucide-react";
 
 const actions = [
   { type: "task", id: "open_youtube", label: "YouTube", icon: Youtube },
   { type: "task", id: "open_explorer", label: "Files", icon: FolderOpen },
+  { type: "task", id: "open_vscode", label: "Code", icon: Code2 },
   { type: "task", id: "open_calculator", label: "Calc", icon: Calculator },
   { type: "task", id: "play_music", label: "Music", icon: Music },
   { type: "task", id: "current_time", label: "Time", icon: Clock },
-  { type: "task", id: "create_note", label: "Note", icon: NotebookPen },
 ];
 
 export default function QuickDock({ disabled, wakeEnabled, onRun, onToggleWake, onUploadClick }) {

@@ -31,6 +31,7 @@ backend/venv/
 backend/runtime/speech/*
 backend/runtime/uploads/*
 backend/runtime/*.log
+backend/runtime/*.json
 !backend/runtime/.gitkeep
 !backend/runtime/speech/.gitkeep
 !backend/runtime/uploads/.gitkeep

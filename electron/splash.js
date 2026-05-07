@@ -8,9 +8,13 @@ function splashHtml() {
     process.resourcesPath && fs.existsSync(path.join(process.resourcesPath, "assets"))
       ? process.resourcesPath
       : projectRoot;
-  const soundPath = path.join(resourceRoot, "assets", "sounds", "startup.wav");
-  const soundSrc = fs.existsSync(soundPath)
-    ? `data:audio/wav;base64,${fs.readFileSync(soundPath).toString("base64")}`
+  const soundCandidates = [
+    { path: path.join(resourceRoot, "assets", "sounds", "startup.wav"), mime: "audio/wav" },
+    { path: path.join(resourceRoot, "assets", "sounds", "startup.mp3"), mime: "audio/mpeg" },
+  ];
+  const startupSound = soundCandidates.find((sound) => fs.existsSync(sound.path));
+  const soundSrc = startupSound
+    ? `data:${startupSound.mime};base64,${fs.readFileSync(startupSound.path).toString("base64")}`
     : "";
 
   return `<!doctype html>
