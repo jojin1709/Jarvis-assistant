@@ -313,10 +313,12 @@ def _quality_fallback_for_request(user_request: str, files: list[dict]) -> tuple
             _snake_game_files(),
         )
 
-    if _is_website_request(normalized) and _is_weak_generated_project(files, minimum_chars=5200):
+    if _is_website_request(normalized) and (
+        _is_weak_generated_project(files, minimum_chars=5200) or not _has_website_visual_assets(files)
+    ):
         return (
             "premium-website",
-            "Premium responsive website with real sections, interactive filtering, pricing, testimonials, and contact form.",
+            "Premium responsive website with real images, finished sections, interactive filtering, pricing, testimonials, and contact form.",
             _premium_website_files(user_request),
         )
 
@@ -336,6 +338,37 @@ def _is_website_request(normalized: str) -> bool:
 
 def _is_snake_game_request(normalized: str) -> bool:
     return "snake" in normalized and any(word in normalized for word in ("game", "website", "web", "app", "code"))
+
+
+def _has_website_visual_assets(files: list[dict]) -> bool:
+    combined = "\n".join(str(item.get("content") or "") for item in files if isinstance(item, dict)).lower()
+    if not combined.strip():
+        return False
+
+    visual_markers = (
+        "<img",
+        "<picture",
+        "background-image:",
+        "image-set(",
+        "images.unsplash.com",
+        "images.pexels.com",
+        "picsum.photos",
+        ".jpg",
+        ".jpeg",
+        ".png",
+        ".webp",
+        ".avif",
+    )
+    blocked_placeholders = (
+        "image here",
+        "placeholder image",
+        "your image",
+        "gray box",
+        "grey box",
+    )
+    return any(marker in combined for marker in visual_markers) and not any(
+        placeholder in combined for placeholder in blocked_placeholders
+    )
 
 
 def _is_app_or_tool_request(normalized: str) -> bool:
@@ -432,13 +465,16 @@ def _premium_website_files(user_request: str) -> list[dict]:
           </div>
         </div>
         <aside class="hero-panel" aria-label="Project snapshot">
-          <span class="status">Live build queue open</span>
-          <strong>Request understood</strong>
-          <p>{user_request[:160]}</p>
-          <div class="score-grid">
-            <div><b>98</b><span>Performance</span></div>
-            <div><b>24h</b><span>Prototype</span></div>
-            <div><b>4.9</b><span>Client rating</span></div>
+          <img src="https://images.unsplash.com/photo-1497366754035-f200968a6e72?auto=format&fit=crop&w=1100&q=80" alt="Premium creative workspace with modern website planning" />
+          <div class="hero-panel-content">
+            <span class="status">Live build queue open</span>
+            <strong>Request understood</strong>
+            <p>{user_request[:160]}</p>
+            <div class="score-grid">
+              <div><b>98</b><span>Performance</span></div>
+              <div><b>24h</b><span>Prototype</span></div>
+              <div><b>4.9</b><span>Client rating</span></div>
+            </div>
           </div>
         </aside>
       </section>
@@ -456,16 +492,19 @@ def _premium_website_files(user_request: str) -> list[dict]:
         </div>
         <div class="project-grid">
           <article class="project-card" data-kind="brand">
+            <img src="https://images.unsplash.com/photo-1500530855697-b586d89ba3ee?auto=format&fit=crop&w=900&q=80" alt="Premium brand website displayed in a warm studio setting" />
             <span>Brand System</span>
             <h3>Pulse Identity</h3>
             <p>Launch-ready visual identity with a responsive site, motion accents, and conversion copy.</p>
           </article>
           <article class="project-card" data-kind="saas">
+            <img src="https://images.unsplash.com/photo-1551434678-e076c223a692?auto=format&fit=crop&w=900&q=80" alt="Team reviewing a polished SaaS dashboard interface" />
             <span>SaaS Dashboard</span>
             <h3>MetricFlow</h3>
             <p>Operational dashboard with clean cards, compact data views, and a smooth onboarding path.</p>
           </article>
           <article class="project-card" data-kind="commerce">
+            <img src="https://images.unsplash.com/photo-1515886657613-9f3515b0c78f?auto=format&fit=crop&w=900&q=80" alt="Stylish commerce photography for a premium product website" />
             <span>Commerce</span>
             <h3>Craft Market</h3>
             <p>Premium storefront concept with product highlights, trust signals, and mobile-first checkout cues.</p>
@@ -649,8 +688,16 @@ p { color: var(--muted); line-height: 1.75; }
   background: var(--panel);
   box-shadow: var(--shadow);
   backdrop-filter: blur(18px);
+  overflow: hidden;
 }
-.hero-panel { border-radius: 30px; padding: 1.4rem; }
+.hero-panel { border-radius: 30px; padding: 0; }
+.hero-panel img {
+  width: 100%;
+  aspect-ratio: 4 / 3;
+  object-fit: cover;
+  display: block;
+}
+.hero-panel-content { padding: 1.4rem; }
 .status { color: #74f5bd; font-weight: 900; }
 .score-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: .7rem; margin-top: 1rem; }
 .score-grid div { border-radius: 18px; padding: .9rem; background: var(--panel-strong); }
@@ -661,6 +708,18 @@ p { color: var(--muted); line-height: 1.75; }
 .section-title { max-width: 760px; margin-bottom: 2rem; }
 .project-grid, .pricing-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 1rem; }
 .project-card, .pricing-grid article { border-radius: 26px; padding: 1.35rem; min-height: 245px; }
+.project-card {
+  display: flex;
+  flex-direction: column;
+  gap: .8rem;
+}
+.project-card img {
+  width: calc(100% + 2.7rem);
+  margin: -1.35rem -1.35rem .3rem;
+  aspect-ratio: 16 / 10;
+  object-fit: cover;
+  display: block;
+}
 .project-card span, .pricing-grid span { color: var(--accent-2); font-size: .8rem; font-weight: 900; text-transform: uppercase; letter-spacing: .12em; }
 .project-card.hide { display: none; }
 .filter.active { background: var(--accent); color: #07111f; border-color: transparent; }
@@ -1455,7 +1514,7 @@ def _portfolio_files() -> list[dict]:
           </div>
         </div>
         <div class="hero-card reveal">
-          <div class="avatar">JX</div>
+          <img class="portrait" src="https://images.unsplash.com/photo-1517841905240-472988babdf9?auto=format&fit=crop&w=900&q=80" alt="Professional developer portrait for the portfolio hero" />
           <div>
             <p class="status">Available for projects</p>
             <h2>Your Name</h2>
@@ -1471,18 +1530,21 @@ def _portfolio_files() -> list[dict]:
         </div>
         <div class="project-grid">
           <article class="project-card reveal">
+            <img src="https://images.unsplash.com/photo-1516321318423-f06f85e504b3?auto=format&fit=crop&w=900&q=80" alt="AI desktop assistant interface on a laptop" />
             <span class="tag">AI Desktop App</span>
             <h3>Jarvis Assistant</h3>
             <p>Electron + Python assistant with voice commands, bilingual support, local actions, and code generation.</p>
             <div class="stack"><span>Electron</span><span>React</span><span>Python</span></div>
           </article>
           <article class="project-card reveal">
+            <img src="https://images.unsplash.com/photo-1498050108023-c5249f4df085?auto=format&fit=crop&w=900&q=80" alt="Responsive web platform code and design workspace" />
             <span class="tag">Web Platform</span>
             <h3>Portfolio System</h3>
             <p>A responsive personal brand website with smooth sections, premium cards, and conversion-focused contact.</p>
             <div class="stack"><span>HTML</span><span>CSS</span><span>JavaScript</span></div>
           </article>
           <article class="project-card reveal">
+            <img src="https://images.unsplash.com/photo-1551288049-bebda4e38f71?auto=format&fit=crop&w=900&q=80" alt="Automation dashboard with analytics charts" />
             <span class="tag">Automation</span>
             <h3>Workflow Toolkit</h3>
             <p>Small tools that organize files, speed up repetitive tasks, and make daily computer work easier.</p>
@@ -1644,22 +1706,25 @@ h3 { font-size: 1.45rem; margin-bottom: .75rem; }
 .metrics span, .skill-list span, .tag { color: var(--muted); font-size: .85rem; font-weight: 800; text-transform: uppercase; letter-spacing: .12em; }
 
 .hero-card { border-radius: 34px; padding: 2rem; display: grid; gap: 1.25rem; }
-.avatar {
-  width: 112px;
-  height: 112px;
-  border-radius: 32px;
-  display: grid;
-  place-items: center;
-  background: linear-gradient(135deg, #ffffff, var(--accent-2) 38%, var(--accent));
-  color: #080a12;
-  font-size: 2.3rem;
-  font-weight: 900;
+.portrait {
+  width: 100%;
+  aspect-ratio: 4 / 3;
+  border-radius: 26px;
+  object-fit: cover;
+  display: block;
 }
 .status { color: #77f7c9; font-weight: 800; }
 
 .section-heading { max-width: 760px; margin-bottom: 2rem; }
 .project-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 1rem; }
-.project-card { min-height: 280px; border-radius: 28px; padding: 1.4rem; display: flex; flex-direction: column; justify-content: space-between; transition: transform .2s ease, border-color .2s ease; }
+.project-card { min-height: 360px; border-radius: 28px; padding: 1.4rem; display: flex; flex-direction: column; justify-content: space-between; gap: .8rem; overflow: hidden; transition: transform .2s ease, border-color .2s ease; }
+.project-card img {
+  width: calc(100% + 2.8rem);
+  margin: -1.4rem -1.4rem .35rem;
+  aspect-ratio: 16 / 10;
+  object-fit: cover;
+  display: block;
+}
 .project-card:hover { transform: translateY(-6px); border-color: color-mix(in srgb, var(--accent-2) 58%, var(--line)); }
 .stack { display: flex; flex-wrap: wrap; gap: .45rem; }
 .stack span { border: 1px solid var(--line); border-radius: 999px; padding: .35rem .65rem; color: var(--muted); font-size: .82rem; font-weight: 700; }

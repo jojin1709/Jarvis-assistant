@@ -30,6 +30,8 @@ Rules:
 - Include complete code, polished UI, real interactions, and meaningful sample content.
 - Never output placeholder sections like "Project 1", "description of project", "lorem ipsum", "TODO", or empty links as the main result.
 - Websites must look like finished modern products: responsive layout, strong spacing, real sections, tasteful styling, hover states, and useful JavaScript when appropriate.
+- Websites must include real visual assets unless the user explicitly asks for text-only: at least one hero image or photographic background plus supporting images/cards with descriptive alt text. Use stable remote royalty-free image URLs when no local assets are provided.
+- Match visuals to the requested niche: portfolio, restaurant, gym, SaaS, shop, school, travel, event, product, etc. Never use empty gray boxes, "image here", SVG placeholders, or decorative-only blobs as the main visual.
 - Games must be playable with controls, score/state, restart flow, collision/rule handling, and a polished screen.
 - Apps/tools must include real form states, validation, sample data, empty/loading/error states where relevant, and clear user workflows.
 - Prefer plain HTML/CSS/JS for websites, games, and small apps unless the user asks for another stack.
