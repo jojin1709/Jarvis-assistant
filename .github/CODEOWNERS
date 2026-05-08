@@ -1,0 +1,5 @@
+# Official ownership for JX Jarvis.
+# Enable GitHub branch protection with "Require review from Code Owners"
+# to enforce approval before changes can be merged into protected branches.
+
+* @jojin1709
