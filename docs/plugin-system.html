@@ -1,0 +1,29 @@
+<!doctype html>
+<html lang="en">
+  <head><meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" /><title>Plugin System - JX Jarvis Docs</title><meta name="description" content="JX Jarvis plugin and skill registry for modular automation capabilities." /><link rel="icon" href="../assets/favicon.ico" /><link rel="apple-touch-icon" href="../assets/logo.png" /><link rel="stylesheet" href="../styles/site.css" /></head>
+  <body>
+    <header class="site-header"><div class="container nav"><a class="brand" href="../index.html"><span class="brand-mark"><img src="../assets/logo.png" alt="JX Jarvis logo" /></span><span>JX Jarvis Docs</span></a><button class="button mobile-toggle" data-nav-toggle>Menu</button><nav class="nav-links" data-nav-links><a href="../index.html">Home</a><a class="active" href="installation.html">Docs</a><a href="providers.html">Providers</a><a href="developer-guide.html">Developer</a></nav></div></header>
+    <main class="container docs-layout">
+      <aside class="docs-sidebar panel"><nav><a href="installation.html">Installation</a><a href="setup.html">First-time setup</a><a href="voice-system.html">Voice system</a><a href="browser-automation.html">Browser automation</a><a href="providers.html">AI providers</a><a href="memory-system.html">Memory system</a><a href="permissions.html">Permissions</a><a href="workflow-system.html">Workflow system</a><a class="active" href="plugin-system.html">Plugin system</a><a href="developer-guide.html">Developer guide</a></nav></aside>
+      <article class="doc-article">
+        <div class="eyebrow">Extensibility</div><h1>Plugin system</h1>
+        <p>The plugin registry gives Jarvis a modular place to describe installed capabilities and future automation packs.</p>
+        <h2>Built-in plugins</h2>
+        <table><tr><th>Plugin</th><th>Capability</th></tr><tr><td>Visual Browser Operator</td><td>Playwright automation, browser history, DOM summaries.</td></tr><tr><td>Desktop Control</td><td>Verified app launch, app close, system actions.</td></tr><tr><td>Coding Agent</td><td>Project analysis, website generation, build scripts.</td></tr></table>
+        <h2>Local manifests</h2>
+        <p>Local plugins are JSON manifests stored in `backend/plugins/installed`. They can be enabled, disabled, and listed by the backend.</p>
+        <div class="code-block"><pre><code>{
+  "id": "my-tool-pack",
+  "name": "My Tool Pack",
+  "description": "Custom commands for my workflow.",
+  "enabled": true,
+  "commands": ["open_workspace", "run_tests"]
+}</code></pre></div>
+        <h2>Design goals</h2>
+        <ul><li>Keep tools modular.</li><li>Make capabilities discoverable in the UI.</li><li>Allow future marketplace-style installation.</li><li>Keep permission checks centralized instead of inside each plugin.</li></ul>
+        <h2>Future expansion</h2>
+        <p>The next layer can add plugin command execution contracts, schema validation, signed plugins, and per-plugin permissions.</p>
+      <div class="card" style="margin-top:40px"><h3>Created by Jojin John</h3><p>JX Jarvis is created by <a href="https://www.linkedin.com/in/jojin-john-74386b34a" target="_blank" rel="noreferrer">Jojin John</a>.</p></div></article>
+    </main><script src="../scripts/site.js"></script>
+  </body>
+</html>

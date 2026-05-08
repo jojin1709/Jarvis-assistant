@@ -1,0 +1,37 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 760" role="img" aria-label="AI provider settings">
+  <rect width="1200" height="760" fill="#070B14"/>
+  <circle cx="990" cy="160" r="260" fill="#00E5FF" opacity=".08"/>
+  <rect x="72" y="68" width="1056" height="624" rx="34" fill="#0F172A" opacity=".76" stroke="#fff" stroke-opacity=".08"/>
+  <text x="118" y="130" fill="#E6EDF3" font-family="Inter, Arial" font-size="28" font-weight="800">AI Providers</text>
+  <text x="118" y="160" fill="#94A3B8" font-family="Inter, Arial" font-size="15">Cloud, local, and hybrid model routing.</text>
+  <g font-family="Inter, Arial">
+    <rect x="118" y="210" width="290" height="146" rx="24" fill="#07101E" stroke="#00E5FF" stroke-opacity=".28"/>
+    <text x="146" y="252" fill="#E6EDF3" font-size="18" font-weight="800">OpenAI</text>
+    <text x="146" y="282" fill="#94A3B8" font-size="13">gpt-4.1-mini</text>
+    <rect x="146" y="306" width="96" height="28" rx="14" fill="#00E5FF" opacity=".12"/>
+    <text x="166" y="325" fill="#00E5FF" font-size="12" font-weight="700">Connected</text>
+    <rect x="456" y="210" width="290" height="146" rx="24" fill="#07101E" stroke="#fff" stroke-opacity=".08"/>
+    <text x="484" y="252" fill="#E6EDF3" font-size="18" font-weight="800">Claude</text>
+    <text x="484" y="282" fill="#94A3B8" font-size="13">claude-3-5-sonnet</text>
+    <rect x="484" y="306" width="84" height="28" rx="14" fill="#fff" opacity=".06"/>
+    <text x="506" y="325" fill="#94A3B8" font-size="12" font-weight="700">Ready</text>
+    <rect x="794" y="210" width="290" height="146" rx="24" fill="#07101E" stroke="#fff" stroke-opacity=".08"/>
+    <text x="822" y="252" fill="#E6EDF3" font-size="18" font-weight="800">Ollama</text>
+    <text x="822" y="282" fill="#94A3B8" font-size="13">llama3.1 local</text>
+    <rect x="822" y="306" width="92" height="28" rx="14" fill="#00E5FF" opacity=".12"/>
+    <text x="840" y="325" fill="#00E5FF" font-size="12" font-weight="700">Offline</text>
+    <rect x="118" y="390" width="438" height="220" rx="26" fill="#07101E" stroke="#fff" stroke-opacity=".08"/>
+    <text x="148" y="432" fill="#E6EDF3" font-size="19" font-weight="800">Routing</text>
+    <text x="148" y="470" fill="#94A3B8" font-size="14">Chat</text><text x="430" y="470" fill="#00E5FF" font-size="14">Auto</text>
+    <text x="148" y="508" fill="#94A3B8" font-size="14">Coding</text><text x="405" y="508" fill="#00E5FF" font-size="14">Claude</text>
+    <text x="148" y="546" fill="#94A3B8" font-size="14">Voice</text><text x="386" y="546" fill="#00E5FF" font-size="14">Whisper</text>
+    <text x="148" y="584" fill="#94A3B8" font-size="14">Automation</text><text x="420" y="584" fill="#00E5FF" font-size="14">Fast</text>
+    <rect x="604" y="390" width="480" height="220" rx="26" fill="#07101E" stroke="#fff" stroke-opacity=".08"/>
+    <text x="634" y="432" fill="#E6EDF3" font-size="19" font-weight="800">Secure key storage</text>
+    <rect x="634" y="468" width="390" height="44" rx="16" fill="#0F172A"/>
+    <text x="660" y="496" fill="#94A3B8" font-size="14">sk-********************7a2f</text>
+    <rect x="634" y="532" width="140" height="46" rx="16" fill="#00E5FF"/>
+    <text x="675" y="561" fill="#07101E" font-size="14" font-weight="800">Test</text>
+    <text x="802" y="560" fill="#94A3B8" font-size="14">178 ms latency</text>
+  </g>
+</svg>
