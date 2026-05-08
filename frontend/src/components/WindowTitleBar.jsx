@@ -1,6 +1,8 @@
 import { Maximize2, Minus, Square, X } from "lucide-react";
 import { useEffect, useState } from "react";
 
+import LogoMark from "./LogoMark.jsx";
+
 export default function WindowTitleBar() {
   const [maximized, setMaximized] = useState(false);
   const desktop = window.jxJarvis;
@@ -17,9 +19,7 @@ export default function WindowTitleBar() {
   return (
     <div className="window-drag flex h-11 shrink-0 items-center justify-between border-b border-line bg-[#070B14]/70 pl-4 backdrop-blur-2xl">
       <div className="flex items-center gap-3">
-        <div className="grid h-6 w-6 place-items-center rounded-lg border border-white/10 bg-white/[0.04] text-[11px] font-semibold text-cyanCore">
-          JX
-        </div>
+        <LogoMark className="h-6 w-6" rounded="rounded-lg" />
         <div className="flex items-baseline gap-2">
           <p className="text-sm font-semibold text-textPrimary">JX Jarvis</p>
           <p className="text-xs text-textSecondary">Personal AI Workspace</p>

@@ -11,8 +11,12 @@ function splashHtml() {
       : projectRoot;
   const startupWav = path.join(resourceRoot, "assets", "sounds", "startup.wav");
   const startupMp3 = path.join(resourceRoot, "assets", "sounds", "startup.mp3");
+  const logoPng = path.join(resourceRoot, "assets", "logo.png");
   const startupSound = fs.existsSync(startupWav) ? startupWav : fs.existsSync(startupMp3) ? startupMp3 : "";
   const soundSrc = startupSound ? pathToFileURL(startupSound).toString() : "";
+  const logoSrc = fs.existsSync(logoPng)
+    ? `data:image/png;base64,${fs.readFileSync(logoPng).toString("base64")}`
+    : "";
 
   return `<!doctype html>
 <html>
@@ -70,11 +74,14 @@ function splashHtml() {
         border-radius: 28px;
         background: rgba(15,23,42,.72);
         box-shadow: 0 24px 80px rgba(0,0,0,.35), 0 0 54px rgba(0,229,255,.12);
-        color: #00E5FF;
-        font-size: 25px;
-        font-weight: 700;
-        letter-spacing: -.04em;
         animation: logoIn .8s .25s ease-out both, pulse 3.2s 1.2s ease-in-out infinite;
+        overflow: hidden;
+      }
+      .logo img {
+        width: 100%;
+        height: 100%;
+        object-fit: cover;
+        display: block;
       }
       h1 {
         margin: 26px 0 0;
@@ -165,7 +172,7 @@ function splashHtml() {
   <body>
     <div class="shell">
       <div class="content">
-        <div class="logo">JX</div>
+        <div class="logo">${logoSrc ? `<img src="${logoSrc}" alt="JX Jarvis logo" />` : "JX"}</div>
         <h1>JX Jarvis</h1>
         <p class="subtitle">Personal AI Workspace</p>
         <p class="status">Initializing systems...</p>
@@ -243,7 +250,9 @@ function createSplashWindow() {
     process.resourcesPath && fs.existsSync(path.join(process.resourcesPath, "assets"))
       ? process.resourcesPath
       : projectRoot;
-  const icon = path.join(resourceRoot, "assets", "icon.ico");
+  const preferredIcon = path.join(resourceRoot, "assets", "jx-jarvis.ico");
+  const fallbackIcon = path.join(resourceRoot, "assets", "icon.ico");
+  const icon = fs.existsSync(preferredIcon) ? preferredIcon : fallbackIcon;
   const splash = new BrowserWindow({
     width: 620,
     height: 460,

@@ -1,0 +1,55 @@
+<!doctype html>
+<html lang="en">
+  <head><meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" /><title>Developer Guide - JX Jarvis Docs</title><meta name="description" content="JX Jarvis architecture, frontend, backend, Electron, tools, providers, memory, permissions, and contribution guide." /><link rel="icon" href="../assets/favicon.ico" /><link rel="apple-touch-icon" href="../assets/logo.png" /><link rel="stylesheet" href="../styles/site.css" /></head>
+  <body>
+    <header class="site-header"><div class="container nav"><a class="brand" href="../index.html"><span class="brand-mark"><img src="../assets/logo.png" alt="JX Jarvis logo" /></span><span>JX Jarvis Docs</span></a><button class="button mobile-toggle" data-nav-toggle>Menu</button><nav class="nav-links" data-nav-links><a href="../index.html">Home</a><a class="active" href="installation.html">Docs</a><a href="providers.html">Providers</a><a class="active" href="developer-guide.html">Developer</a></nav></div></header>
+    <main class="container docs-layout">
+      <aside class="docs-sidebar panel"><nav><a href="installation.html">Installation</a><a href="setup.html">First-time setup</a><a href="voice-system.html">Voice system</a><a href="browser-automation.html">Browser automation</a><a href="providers.html">AI providers</a><a href="memory-system.html">Memory system</a><a href="permissions.html">Permissions</a><a href="workflow-system.html">Workflow system</a><a href="plugin-system.html">Plugin system</a><a class="active" href="developer-guide.html">Developer guide</a></nav></aside>
+      <article class="doc-article">
+        <div class="eyebrow">Architecture</div><h1>Developer guide</h1>
+        <p>JX Jarvis is split into Electron, React, and Python. The frontend presents state and controls; the backend performs real desktop, browser, provider, memory, and permission work.</p>
+        <h2>Frontend structure</h2>
+        <div class="code-block"><pre><code>frontend/src/
+  pages/
+  components/
+  layouts/
+  hooks/
+  store/
+  stores/
+  services/
+  overlays/
+  widgets/
+  workflows/
+  voice/
+  tools/
+  utils/</code></pre></div>
+        <p>`useJarvisRuntime` is the central runtime hook. It polls backend state, manages wake/listen flows, runs commands, updates logs, and connects page controls to APIs.</p>
+        <h2>Backend structure</h2>
+        <div class="code-block"><pre><code>backend/
+  api/
+  agents/
+  automation/
+  browser/
+  coding/
+  execution/
+  memory/
+  plugins/
+  providers/
+  safety/
+  system/
+  tools/
+  vision/
+  voice/</code></pre></div>
+        <h2>Adding a backend tool</h2>
+        <ol><li>Create a module in `backend/tools`.</li><li>Guard sensitive actions through `api.permissions`.</li><li>Return a real success or failure message.</li><li>Add it to the runner list in `api.execution` if it should be available to autonomous plans.</li><li>Add UI controls only after the API works.</li></ol>
+        <h2>Adding a provider</h2>
+        <ol><li>Create `backend/providers/name_provider.py` with a `chat(...)` function.</li><li>Add a `ProviderSpec` in `backend/providers/registry.py`.</li><li>Add default model and route settings in `backend/providers/config.py`.</li><li>Expose any provider-specific model discovery endpoints if needed.</li></ol>
+        <h2>Testing</h2>
+        <div class="code-block"><pre><code>backend\.venv\Scripts\python.exe -m compileall backend
+npm run build</code></pre></div>
+        <h2>Contribution standards</h2>
+        <ul><li>Do not commit secrets or runtime memory.</li><li>Do not fake task execution in UI.</li><li>Keep changes scoped and preserve user work.</li><li>Verify backend imports and frontend build before opening a pull request.</li><li>Document new permissions, tools, and provider settings.</li></ul>
+      <div class="card" style="margin-top:40px"><h3>Created by Jojin John</h3><p>JX Jarvis is created by <a href="https://www.linkedin.com/in/jojin-john-74386b34a" target="_blank" rel="noreferrer">Jojin John</a>.</p></div></article>
+    </main><script src="../scripts/site.js"></script>
+  </body>
+</html>

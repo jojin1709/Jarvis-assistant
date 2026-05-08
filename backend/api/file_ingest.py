@@ -5,6 +5,7 @@ from werkzeug.datastructures import FileStorage
 from werkzeug.utils import secure_filename
 
 from api.ai_provider import ask_ai
+from api.permissions import evaluate_permission, log_activity
 from api.sarvam_services import analyze_sarvam_document
 from app.config import settings
 
@@ -44,6 +45,20 @@ def save_and_analyze(file: FileStorage) -> dict[str, str | int | bool | None]:
     while output_path.exists():
         output_path = settings.uploads_dir / f"{output_path.stem}-{counter}{output_path.suffix}"
         counter += 1
+
+    decision = evaluate_permission("file.create", f"save uploaded file {output_path.name}", path=output_path)
+    if not decision.allowed:
+        log_activity(f"Denied upload {output_path.name}: {decision.message}", "error", "security")
+        return {
+            "filename": filename,
+            "path": None,
+            "size": 0,
+            "mime_type": None,
+            "text_indexed": False,
+            "document_intelligence_used": False,
+            "document_output": None,
+            "summary": decision.message,
+        }
 
     file.save(output_path)
     size = output_path.stat().st_size

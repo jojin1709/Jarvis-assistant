@@ -1,32 +1,37 @@
 import json
 
-from api.deepseek_ai import chat_deepseek_messages
 from api.groq_ai import CODE_PROJECT_PROMPT, SYSTEM_PROMPT, chat_groq_messages
-from api.nvidia_ai import chat_nvidia_messages
-from api.sarvam_ai import chat_sarvam_messages
 from app.config import settings
+from providers.config import load_provider_config
+from providers.registry import chat_with_provider, provider_key, resolve_provider
 
 
 def configured_provider() -> str:
-    provider = (settings.ai_provider or "groq").strip().lower()
-    return provider if provider in {"deepseek", "groq", "nvidia", "sarvam", "auto"} else "groq"
+    provider = (load_provider_config().get("active_provider") or settings.ai_provider or "auto").strip().lower()
+    return provider if provider in {"deepseek", "groq", "nvidia", "sarvam", "openai", "claude", "gemini", "openrouter", "ollama", "local", "local_llamacpp", "auto"} else "auto"
 
 
 def active_provider() -> str:
-    provider = configured_provider()
-    if provider == "auto":
-        if settings.sarvam_api_key:
-            return "sarvam"
-        if settings.deepseek_api_key:
-            return "deepseek"
-        if settings.nvidia_api_key:
-            return "nvidia"
+    try:
+        return resolve_provider("chat")
+    except Exception:
         return "groq"
-    return provider
 
 
 def provider_label() -> str:
-    labels = {"deepseek": "DeepSeek", "groq": "Groq", "nvidia": "NVIDIA", "sarvam": "Sarvam"}
+    labels = {
+        "deepseek": "DeepSeek",
+        "groq": "Groq",
+        "nvidia": "NVIDIA",
+        "sarvam": "Sarvam",
+        "openai": "OpenAI",
+        "claude": "Claude",
+        "gemini": "Gemini",
+        "openrouter": "OpenRouter",
+        "ollama": "Ollama",
+        "local": "Ollama",
+        "local_llamacpp": "llama.cpp",
+    }
     return labels.get(active_provider(), "Groq")
 
 
@@ -37,13 +42,10 @@ def _chat_with_provider(
     max_tokens: int,
     response_format: dict[str, str] | None,
 ) -> str:
-    if provider == "sarvam":
-        return chat_sarvam_messages(messages, temperature, max_tokens, response_format)
-    if provider == "deepseek":
-        return chat_deepseek_messages(messages, temperature, max_tokens, response_format)
-    if provider == "nvidia":
-        return chat_nvidia_messages(messages, temperature, max_tokens, response_format)
-    return chat_groq_messages(messages, temperature, max_tokens, response_format)
+    if provider == "groq" and settings.groq_api_key and not provider_key("groq"):
+        return chat_groq_messages(messages, temperature, max_tokens, response_format)
+    content, _latency = chat_with_provider(provider, messages, temperature, max_tokens, response_format)
+    return content
 
 
 def chat_ai_messages(
@@ -51,43 +53,25 @@ def chat_ai_messages(
     temperature: float = 0.2,
     max_tokens: int = 700,
     response_format: dict[str, str] | None = None,
+    task_type: str = "chat",
 ) -> str:
-    provider = active_provider()
+    provider = resolve_provider(task_type)
     try:
         return _chat_with_provider(provider, messages, temperature, max_tokens, response_format)
-    except Exception:
-        if configured_provider() == "auto" and provider == "sarvam" and settings.groq_api_key:
-            return _chat_with_provider("groq", messages, temperature, max_tokens, response_format)
-        if configured_provider() == "auto" and provider == "deepseek" and settings.groq_api_key:
-            return _chat_with_provider("groq", messages, temperature, max_tokens, response_format)
-        if configured_provider() == "auto" and provider == "nvidia" and settings.groq_api_key:
-            return _chat_with_provider("groq", messages, temperature, max_tokens, response_format)
+    except Exception as first_error:
+        if configured_provider() == "auto":
+            for fallback in ("ollama", "local_llamacpp", "groq", "openai", "claude", "gemini", "openrouter"):
+                if fallback == provider:
+                    continue
+                try:
+                    return _chat_with_provider(fallback, messages, temperature, max_tokens, response_format)
+                except Exception:
+                    continue
+        raise first_error
         raise
 
 
 def ask_ai(user_text: str, language_instruction: str = "Reply in English.") -> str:
-    provider = active_provider()
-    if provider == "sarvam" and not settings.sarvam_api_key:
-        return (
-            "Sarvam API key is not configured. Add SARVAM_API_KEY to your .env file, "
-            "then restart JX JARVIS."
-        )
-    if provider == "deepseek" and not settings.deepseek_api_key:
-        return (
-            "DeepSeek API key is not configured. Add DEEPSEEK_API_KEY to your .env file, "
-            "then restart JX JARVIS."
-        )
-    if provider == "nvidia" and not settings.nvidia_api_key:
-        return (
-            "NVIDIA API key is not configured. Add NVIDIA_API_KEY to your .env file, "
-            "then restart JX JARVIS."
-        )
-    if provider == "groq" and not settings.groq_api_key:
-        return (
-            "Groq API key is not configured. Add GROQ_API_KEY to your .env file, "
-            "then restart JX JARVIS."
-        )
-
     try:
         return chat_ai_messages(
             messages=[
@@ -102,15 +86,10 @@ def ask_ai(user_text: str, language_instruction: str = "Reply in English.") -> s
 
 
 def ask_ai_code_project(user_text: str) -> str:
-    provider = active_provider()
-    if provider == "sarvam" and not settings.sarvam_api_key:
-        return _code_error_project("missing-sarvam-key", "Add SARVAM_API_KEY to .env, restart JX JARVIS, then ask again.")
-    if provider == "deepseek" and not settings.deepseek_api_key:
-        return _code_error_project("missing-deepseek-key", "Add DEEPSEEK_API_KEY to .env, restart JX JARVIS, then ask again.")
-    if provider == "nvidia" and not settings.nvidia_api_key:
-        return _code_error_project("missing-nvidia-key", "Add NVIDIA_API_KEY to .env, restart JX JARVIS, then ask again.")
-    if provider == "groq" and not settings.groq_api_key:
-        return _code_error_project("missing-groq-key", "Add GROQ_API_KEY to .env, restart JX JARVIS, then ask again.")
+    try:
+        provider = resolve_provider("coding")
+    except Exception as error:
+        return _code_error_project("missing-provider", str(error))
 
     try:
         response_format = {"type": "json_object"} if provider in {"deepseek", "groq", "nvidia"} else None
@@ -122,6 +101,7 @@ def ask_ai_code_project(user_text: str) -> str:
             temperature=0.35,
             max_tokens=5600,
             response_format=response_format,
+            task_type="coding",
         )
     except Exception as error:
         if provider in {"deepseek", "groq", "nvidia"} and ("response_format" in str(error).lower() or "json" in str(error).lower()):
@@ -133,6 +113,7 @@ def ask_ai_code_project(user_text: str) -> str:
                     ],
                     temperature=0.35,
                     max_tokens=5600,
+                    task_type="coding",
                 )
             except Exception as retry_error:
                 error = retry_error

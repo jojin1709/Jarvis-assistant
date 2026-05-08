@@ -1,0 +1,60 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Installation - JX Jarvis Docs</title>
+    <meta name="description" content="Install and run JX Jarvis locally with Node, Python, Electron, and Playwright." />
+    <link rel="icon" href="../assets/favicon.ico" /><link rel="apple-touch-icon" href="../assets/logo.png" />
+    <link rel="stylesheet" href="../styles/site.css" />
+  </head>
+  <body>
+    <header class="site-header"><div class="container nav"><a class="brand" href="../index.html"><span class="brand-mark"><img src="../assets/logo.png" alt="JX Jarvis logo" /></span><span>JX Jarvis Docs</span></a><button class="button mobile-toggle" data-nav-toggle>Menu</button><nav class="nav-links" data-nav-links><a href="../index.html">Home</a><a class="active" href="installation.html">Docs</a><a href="providers.html">Providers</a><a href="developer-guide.html">Developer</a></nav></div></header>
+    <main class="container docs-layout">
+      <aside class="docs-sidebar panel"><nav><a class="active" href="installation.html">Installation</a><a href="setup.html">First-time setup</a><a href="voice-system.html">Voice system</a><a href="browser-automation.html">Browser automation</a><a href="providers.html">AI providers</a><a href="memory-system.html">Memory system</a><a href="permissions.html">Permissions</a><a href="workflow-system.html">Workflow system</a><a href="plugin-system.html">Plugin system</a><a href="developer-guide.html">Developer guide</a></nav></aside>
+      <article class="doc-article">
+        <div class="eyebrow">Getting started</div>
+        <h1>Installation</h1>
+        <p>JX Jarvis runs as an Electron desktop application with a React frontend and Python backend. This guide installs the project for local development and testing.</p>
+
+        <h2>Prerequisites</h2>
+        <ul>
+          <li>Windows 10 or Windows 11.</li>
+          <li>Node.js 20 or newer.</li>
+          <li>Python 3.11 or newer. The current development environment can also run on newer Python builds when dependencies support them.</li>
+          <li>Git for cloning the repository.</li>
+          <li>Chrome or Microsoft Edge for visible browser automation.</li>
+          <li>A microphone if you plan to use voice activation.</li>
+        </ul>
+
+        <h2>Clone and install</h2>
+        <div class="code-block"><button class="copy-button" data-copy="#install">Copy</button><pre id="install"><code>git clone https://github.com/jojin1709/Jarvis-assistant.git
+cd Jarvis-assistant
+npm install
+npm --prefix frontend install</code></pre></div>
+
+        <h2>Backend setup</h2>
+        <p>The backend runs from the `backend` folder. It exposes the local API that powers voice, automation, browser control, memory, permissions, providers, and tools.</p>
+        <div class="code-block"><button class="copy-button" data-copy="#backend">Copy</button><pre id="backend"><code>cd backend
+python -m venv .venv
+.\.venv\Scripts\python.exe -m pip install --upgrade pip
+.\.venv\Scripts\python.exe -m pip install -r requirements.txt
+.\.venv\Scripts\python.exe -m playwright install chromium
+cd ..</code></pre></div>
+
+        <h2>Environment file</h2>
+        <p>Copy the example file and add the keys you want to use. You can also add keys later through Settings -&gt; AI Providers.</p>
+        <div class="code-block"><button class="copy-button" data-copy="#env">Copy</button><pre id="env"><code>copy .env.example .env</code></pre></div>
+        <p>Never commit `.env` or runtime files. The repository `.gitignore` excludes secrets and generated memory by default.</p>
+
+        <h2>Run in development</h2>
+        <div class="code-block"><button class="copy-button" data-copy="#run">Copy</button><pre id="run"><code>npm run dev</code></pre></div>
+        <p>This starts the Vite frontend, launches Electron, and starts the Python backend. The splash screen appears first, then onboarding or the main UI.</p>
+
+        <h2>Build and package</h2>
+        <table><tr><th>Command</th><th>Purpose</th></tr><tr><td>`npm run build`</td><td>Builds the frontend.</td></tr><tr><td>`npm run pack`</td><td>Creates an unpacked Electron build.</td></tr><tr><td>`npm run dist`</td><td>Creates the Windows installer.</td></tr></table>
+      <div class="card" style="margin-top:40px"><h3>Created by Jojin John</h3><p>JX Jarvis is created by <a href="https://www.linkedin.com/in/jojin-john-74386b34a" target="_blank" rel="noreferrer">Jojin John</a>.</p></div></article>
+    </main>
+    <script src="../scripts/site.js"></script>
+  </body>
+</html>

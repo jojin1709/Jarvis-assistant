@@ -1,8 +1,8 @@
 {
   "name": "jx-jarvis",
   "version": "1.0.0",
-  "description": "JX JARVIS futuristic desktop AI assistant powered by Electron, React, Python, Groq, SpeechRecognition, and Edge-TTS.",
-  "author": "JX JARVIS",
+  "description": "JX JARVIS premium desktop AI workspace powered by Electron, React, Python, voice control, and autonomous tools.",
+  "author": "Jojin John",
   "main": "electron/main.js",
   "private": true,
   "scripts": {
@@ -53,6 +53,18 @@
         "filter": [
           "app/**/*",
           "api/**/*",
+          "agents/**/*",
+          "automation/**/*",
+          "browser/**/*",
+          "coding/**/*",
+          "execution/**/*",
+          "memory/**/*",
+          "plugins/**/*",
+          "providers/**/*",
+          "safety/**/*",
+          "system/**/*",
+          "tools/**/*",
+          "vision/**/*",
           "voice/**/*",
           "requirements.txt"
         ]
@@ -62,7 +74,7 @@
       "target": [
         "nsis"
       ],
-      "icon": "icon.ico",
+      "icon": "jx-jarvis.ico",
       "signAndEditExecutable": false,
       "artifactName": "${productName}-Setup-${version}.${ext}"
     },

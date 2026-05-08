@@ -4,6 +4,7 @@ import wave
 
 from api.sarvam_services import transcribe_sarvam_audio
 from app.config import settings
+from providers.config import load_provider_config
 
 
 def _looks_malayalam(text: str) -> bool:
@@ -38,15 +39,22 @@ class VoiceRecognizer:
         )
         sd.wait()
         audio_bytes = recording.tobytes()
+        audio_path = settings.speech_dir / "jx_jarvis_input.wav"
+        with wave.open(str(audio_path), "wb") as wav_file:
+            wav_file.setnchannels(1)
+            wav_file.setsampwidth(2)
+            wav_file.setframerate(sample_rate)
+            wav_file.writeframes(audio_bytes)
+
+        provider_config = load_provider_config()
+        voice_provider = str(provider_config.get("routes", {}).get("voice") or settings.stt_provider).lower()
+
+        if voice_provider == "local_whisper" or settings.stt_provider == "local_whisper":
+            result = self._transcribe_local_whisper(audio_path, provider_config)
+            if result:
+                return result
 
         if settings.stt_provider in {"sarvam", "auto"} and settings.sarvam_api_key:
-            audio_path = settings.speech_dir / "jx_jarvis_input.wav"
-            with wave.open(str(audio_path), "wb") as wav_file:
-                wav_file.setnchannels(1)
-                wav_file.setsampwidth(2)
-                wav_file.setframerate(sample_rate)
-                wav_file.writeframes(audio_bytes)
-
             try:
                 return transcribe_sarvam_audio(audio_path)
             except Exception as error:
@@ -96,3 +104,17 @@ class VoiceRecognizer:
             return "I could not clearly understand the audio."
         except sr.RequestError as exc:
             return f"Speech recognition service error: {exc}"
+
+    def _transcribe_local_whisper(self, audio_path, provider_config: dict) -> str:
+        model_name = str(provider_config.get("models", {}).get("local_whisper") or "base")
+        try:
+            import whisper
+        except ImportError:
+            return "Local Whisper is selected, but the whisper package is not installed."
+        try:
+            model = whisper.load_model(model_name)
+            result = model.transcribe(str(audio_path), fp16=False)
+        except Exception as error:
+            return f"Local Whisper transcription failed: {error}"
+        text = str(result.get("text") or "").strip()
+        return text or "Local Whisper did not detect speech."

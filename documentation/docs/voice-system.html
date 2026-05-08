@@ -1,0 +1,26 @@
+<!doctype html>
+<html lang="en">
+  <head><meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" /><title>Voice System - JX Jarvis Docs</title><meta name="description" content="JX Jarvis wake word, microphone, speech recognition, and voice response documentation." /><link rel="icon" href="../assets/favicon.ico" /><link rel="apple-touch-icon" href="../assets/logo.png" /><link rel="stylesheet" href="../styles/site.css" /></head>
+  <body>
+    <header class="site-header"><div class="container nav"><a class="brand" href="../index.html"><span class="brand-mark"><img src="../assets/logo.png" alt="JX Jarvis logo" /></span><span>JX Jarvis Docs</span></a><button class="button mobile-toggle" data-nav-toggle>Menu</button><nav class="nav-links" data-nav-links><a href="../index.html">Home</a><a class="active" href="installation.html">Docs</a><a href="providers.html">Providers</a><a href="developer-guide.html">Developer</a></nav></div></header>
+    <main class="container docs-layout">
+      <aside class="docs-sidebar panel"><nav><a href="installation.html">Installation</a><a href="setup.html">First-time setup</a><a class="active" href="voice-system.html">Voice system</a><a href="browser-automation.html">Browser automation</a><a href="providers.html">AI providers</a><a href="memory-system.html">Memory system</a><a href="permissions.html">Permissions</a><a href="workflow-system.html">Workflow system</a><a href="plugin-system.html">Plugin system</a><a href="developer-guide.html">Developer guide</a></nav></aside>
+      <article class="doc-article">
+        <div class="eyebrow">Voice</div><h1>Voice system</h1>
+        <p>Jarvis is designed to behave like a practical desktop voice assistant: wake, listen, execute, verify, and respond naturally.</p>
+        <h2>Wake words</h2>
+        <p>The built-in wake phrases are "Hey Jarvis" and "Jarvis". When the wake loop detects a phrase, Jarvis either acknowledges and listens for the next command or executes the command included after the wake phrase.</p>
+        <h2>Language support</h2>
+        <p>The default speech languages are English and Malayalam. The UI exposes language mode so users can choose automatic detection, English, or Malayalam.</p>
+        <h2>Speech recognition providers</h2>
+        <table><tr><th>Provider</th><th>Use case</th></tr><tr><td>Google Speech Recognition</td><td>Default cloud fallback for quick local development.</td></tr><tr><td>Sarvam STT</td><td>Indic speech recognition when configured with a Sarvam key.</td></tr><tr><td>Local Whisper</td><td>Offline transcription when the Whisper package and model are installed.</td></tr></table>
+        <h2>Text to speech</h2>
+        <p>Edge TTS is the default voice output. Sarvam TTS can be configured for Indian language voices. Audio files are generated in backend runtime storage and ignored by Git.</p>
+        <h2>Permissions</h2>
+        <p>Voice activation requires `voice.listen` and background wake mode requires `voice.background`. If these are disabled, Jarvis reports that the action is blocked instead of silently listening.</p>
+        <h2>Troubleshooting</h2>
+        <ul><li>Check Windows microphone permissions.</li><li>Confirm the backend has access to the selected audio device.</li><li>Disable background listening in Safe Mode if you want manual control.</li><li>If Local Whisper is selected, install the package and download a model first.</li></ul>
+      <div class="card" style="margin-top:40px"><h3>Created by Jojin John</h3><p>JX Jarvis is created by <a href="https://www.linkedin.com/in/jojin-john-74386b34a" target="_blank" rel="noreferrer">Jojin John</a>.</p></div></article>
+    </main><script src="../scripts/site.js"></script>
+  </body>
+</html>

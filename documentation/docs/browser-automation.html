@@ -1,0 +1,25 @@
+<!doctype html>
+<html lang="en">
+  <head><meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" /><title>Browser Automation - JX Jarvis Docs</title><meta name="description" content="Visual browser automation in JX Jarvis using Playwright, DOM understanding, screenshots, logs, and permissions." /><link rel="icon" href="../assets/favicon.ico" /><link rel="apple-touch-icon" href="../assets/logo.png" /><link rel="stylesheet" href="../styles/site.css" /></head>
+  <body>
+    <header class="site-header"><div class="container nav"><a class="brand" href="../index.html"><span class="brand-mark"><img src="../assets/logo.png" alt="JX Jarvis logo" /></span><span>JX Jarvis Docs</span></a><button class="button mobile-toggle" data-nav-toggle>Menu</button><nav class="nav-links" data-nav-links><a href="../index.html">Home</a><a class="active" href="installation.html">Docs</a><a href="providers.html">Providers</a><a href="developer-guide.html">Developer</a></nav></div></header>
+    <main class="container docs-layout">
+      <aside class="docs-sidebar panel"><nav><a href="installation.html">Installation</a><a href="setup.html">First-time setup</a><a href="voice-system.html">Voice system</a><a class="active" href="browser-automation.html">Browser automation</a><a href="providers.html">AI providers</a><a href="memory-system.html">Memory system</a><a href="permissions.html">Permissions</a><a href="workflow-system.html">Workflow system</a><a href="plugin-system.html">Plugin system</a><a href="developer-guide.html">Developer guide</a></nav></aside>
+      <article class="doc-article">
+        <div class="eyebrow">Operator</div><h1>Browser automation</h1>
+        <p>Jarvis includes a visual browser operator powered by Playwright. It opens a real browser, navigates websites, types into fields, clicks visible elements, scrolls pages, captures screenshots, and reports live progress.</p>
+        <img src="../images/browser-automation.svg" alt="Browser automation screen" style="border-radius:24px;border:1px solid var(--line);margin:24px 0" />
+        <h2>Supported commands</h2>
+        <ul><li>Search Google for a query.</li><li>Open YouTube and search a topic.</li><li>Open a website by name or URL.</li><li>Click visible text, links, or buttons.</li><li>Scroll the current page.</li><li>Summarize readable page content.</li></ul>
+        <h2>DOM understanding</h2>
+        <p>The browser operator extracts visible inputs, buttons, and links from the page. This DOM summary appears in the Browser page so users can see what Jarvis can act on.</p>
+        <h2>Live visibility</h2>
+        <p>Automation runs in a visible Chromium browser with slow motion enabled. The Browser page shows current URL, title, screenshot preview, tab list, action logs, and history.</p>
+        <h2>Controls</h2>
+        <table><tr><th>Control</th><th>Behavior</th></tr><tr><td>Pause</td><td>Stops between checkpoints until resumed.</td></tr><tr><td>Resume</td><td>Continues the current workflow.</td></tr><tr><td>Stop</td><td>Requests cancellation and marks the run stopped.</td></tr><tr><td>Close</td><td>Closes the Playwright browser context.</td></tr></table>
+        <h2>Safety</h2>
+        <p>Sensitive browser actions such as payments, account changes, downloads, login workflows, and destructive actions are routed through the permission engine and can require confirmation.</p>
+      <div class="card" style="margin-top:40px"><h3>Created by Jojin John</h3><p>JX Jarvis is created by <a href="https://www.linkedin.com/in/jojin-john-74386b34a" target="_blank" rel="noreferrer">Jojin John</a>.</p></div></article>
+    </main><script src="../scripts/site.js"></script>
+  </body>
+</html>

@@ -7,6 +7,9 @@ import webbrowser
 from datetime import datetime
 from pathlib import Path, PurePosixPath
 
+from api.permissions import evaluate_permission, guard_action
+from api.memory_storage import remember_project
+
 
 CODE_ROOT = Path.home() / "Desktop" / "JX-JARVIS-Code"
 MAX_FILES = 10
@@ -225,6 +228,15 @@ def is_portfolio_request(text: str) -> bool:
 
 
 def create_portfolio_project(user_request: str) -> str:
+    return guard_action(
+        "code.generate",
+        "create portfolio website project",
+        lambda: _create_portfolio_project(user_request),
+        path=CODE_ROOT,
+    )
+
+
+def _create_portfolio_project(user_request: str) -> str:
     project_dir = _new_project_dir("super-portfolio-website")
     files = _portfolio_files()
     written = _write_files(project_dir, files)
@@ -232,12 +244,23 @@ def create_portfolio_project(user_request: str) -> str:
     validation = validate_code_project(project_dir)
     preview = _open_preview(project_dir)
     opened = _open_in_vscode(project_dir)
-    open_text = "I opened it in a new VS Code window." if opened else "VS Code was not found in PATH, but the files are ready."
+    open_text = "I opened it in a new VS Code window." if opened else "VS Code was unavailable or blocked, but the files are ready."
     preview_text = " Browser preview opened." if preview else ""
-    return f"Super portfolio website created: {project_dir}. Files: index.html, styles.css, script.js. Validation: {validation}. {open_text}{preview_text}"
+    summary = f"Super portfolio website created: {project_dir}. Files: index.html, styles.css, script.js. Validation: {validation}. {open_text}{preview_text}"
+    remember_project(project_dir.name, str(project_dir), summary)
+    return summary
 
 
 def create_code_project(user_request: str, model_response: str) -> str:
+    return guard_action(
+        "code.generate",
+        "create code project",
+        lambda: _create_code_project(user_request, model_response),
+        path=CODE_ROOT,
+    )
+
+
+def _create_code_project(user_request: str, model_response: str) -> str:
     spec = _parse_project_spec(model_response)
     files = spec.get("files") if isinstance(spec.get("files"), list) else []
 
@@ -273,9 +296,11 @@ def create_code_project(user_request: str, model_response: str) -> str:
     if len(written) > 4:
         file_list += f", and {len(written) - 4} more"
 
-    open_text = "I opened it in a new VS Code window." if opened else "VS Code was not found in PATH, but the files are ready."
+    open_text = "I opened it in a new VS Code window." if opened else "VS Code was unavailable or blocked, but the files are ready."
     preview_text = " Browser preview opened." if preview else ""
-    return f"Code workspace created: {project_dir}. Files: {file_list}. Validation: {validation}. {open_text}{preview_text}"
+    summary = f"Code workspace created: {project_dir}. Files: {file_list}. Validation: {validation}. {open_text}{preview_text}"
+    remember_project(project_dir.name, str(project_dir), summary)
+    return summary
 
 
 def _new_project_dir(project_name: str) -> Path:
@@ -1782,11 +1807,14 @@ document.querySelectorAll(".reveal").forEach((element) => observer.observe(eleme
 
 
 def open_code_workspace() -> str:
-    CODE_ROOT.mkdir(parents=True, exist_ok=True)
-    opened = _open_in_vscode(CODE_ROOT)
-    if opened:
-        return f"Opened code workspace folder: {CODE_ROOT}"
-    return f"Code workspace folder is ready: {CODE_ROOT}. VS Code was not found."
+    def run() -> str:
+        CODE_ROOT.mkdir(parents=True, exist_ok=True)
+        opened = _open_in_vscode(CODE_ROOT)
+        if opened:
+            return f"Opened code workspace folder: {CODE_ROOT}"
+        return f"Code workspace folder is ready: {CODE_ROOT}. VS Code was unavailable or blocked."
+
+    return guard_action("file.read", "open code workspace", run, path=CODE_ROOT)
 
 
 def latest_code_project() -> Path | None:
@@ -1803,20 +1831,28 @@ def open_latest_code_project() -> str:
     if not project:
         return "No generated code projects found yet."
 
-    opened = _open_in_vscode(project)
-    preview = _open_preview(project)
-    if opened and preview:
-        return f"Opened latest code project in VS Code and browser: {project}"
-    if opened:
-        return f"Opened latest code project in VS Code: {project}"
-    return f"Latest code project is ready: {project}. VS Code was not found."
+    def run() -> str:
+        opened = _open_in_vscode(project)
+        preview = _open_preview(project)
+        if opened and preview:
+            return f"Opened latest code project in VS Code and browser: {project}"
+        if opened:
+            return f"Opened latest code project in VS Code: {project}"
+        return f"Latest code project is ready: {project}. VS Code was unavailable or blocked."
+
+    return guard_action("file.read", "open latest code project", run, path=project)
 
 
 def test_latest_code_project() -> str:
     project = latest_code_project()
     if not project:
         return "No generated code projects found yet."
-    return f"Latest code project test result for {project.name}: {validate_code_project(project)}"
+    return guard_action(
+        "file.read",
+        "test latest code project",
+        lambda: f"Latest code project test result for {project.name}: {validate_code_project(project)}",
+        path=project,
+    )
 
 
 def validate_code_project(project_dir: Path) -> str:
@@ -1939,6 +1975,8 @@ def _write_project_readme(project_dir: Path, user_request: str, summary: object,
 
 
 def _open_preview(project_dir: Path) -> bool:
+    if not evaluate_permission("browser.open", "open generated project preview").allowed:
+        return False
     for name in ("index.html", "app.html"):
         candidate = project_dir / name
         if candidate.exists():
@@ -1948,6 +1986,8 @@ def _open_preview(project_dir: Path) -> bool:
 
 
 def _open_in_vscode(path: Path) -> bool:
+    if not evaluate_permission("app.open", "open VS Code", app="VS Code").allowed:
+        return False
     commands = ["code.cmd", "code"]
     local_app_data = os.getenv("LOCALAPPDATA")
     program_files = os.getenv("ProgramFiles")

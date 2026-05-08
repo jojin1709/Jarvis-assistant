@@ -4,12 +4,14 @@ import random
 import re
 import shutil
 import subprocess
+import time
 import webbrowser
 from datetime import datetime
 from pathlib import Path
 from urllib.parse import quote_plus
 
 from api.approvals import request_approval
+from api.permissions import accessible_roots, evaluate_permission, guard_action
 from app.config import settings
 from api.code_writer import open_code_workspace, open_latest_code_project, test_latest_code_project
 
@@ -22,16 +24,139 @@ PICTURES = Path.home() / "Pictures"
 VIDEOS = Path.home() / "Videos"
 SAFE_FILE_ROOTS = [DESKTOP, DOCUMENTS, DOWNLOADS, PICTURES, VIDEOS, MUSIC]
 JARVIS_TRASH = DESKTOP / "JX-JARVIS-Trash"
+LOCAL_APP_DATA = Path(os.getenv("LOCALAPPDATA", ""))
+APP_DATA = Path(os.getenv("APPDATA", ""))
+PROGRAM_FILES = Path(os.getenv("ProgramFiles", ""))
+PROGRAM_FILES_X86 = Path(os.getenv("ProgramFiles(x86)", ""))
 
 
-def _run_detached(command: list[str]) -> None:
-    subprocess.Popen(
+APP_TARGETS = {
+    "chrome": {
+        "label": "Chrome",
+        "commands": ["chrome.exe", "chrome"],
+        "processes": ["chrome.exe"],
+        "paths": [
+            PROGRAM_FILES / "Google" / "Chrome" / "Application" / "chrome.exe",
+            PROGRAM_FILES_X86 / "Google" / "Chrome" / "Application" / "chrome.exe",
+            LOCAL_APP_DATA / "Google" / "Chrome" / "Application" / "chrome.exe",
+        ],
+        "fallback_url": "https://www.google.com",
+    },
+    "edge": {
+        "label": "Edge",
+        "commands": ["msedge.exe", "msedge"],
+        "processes": ["msedge.exe"],
+        "paths": [
+            PROGRAM_FILES / "Microsoft" / "Edge" / "Application" / "msedge.exe",
+            PROGRAM_FILES_X86 / "Microsoft" / "Edge" / "Application" / "msedge.exe",
+        ],
+        "fallback_url": "https://www.google.com",
+    },
+    "vs code": {
+        "label": "VS Code",
+        "commands": ["code.cmd", "code.exe", "code"],
+        "processes": ["Code.exe"],
+        "paths": [
+            LOCAL_APP_DATA / "Programs" / "Microsoft VS Code" / "Code.exe",
+            PROGRAM_FILES / "Microsoft VS Code" / "Code.exe",
+        ],
+    },
+    "notepad": {"label": "Notepad", "commands": ["notepad.exe"], "processes": ["notepad.exe"]},
+    "calculator": {"label": "Calculator", "commands": ["calc.exe"], "processes": ["CalculatorApp.exe", "calc.exe"]},
+    "file explorer": {"label": "File Explorer", "commands": ["explorer.exe"], "processes": ["explorer.exe"]},
+    "terminal": {"label": "Windows Terminal", "commands": ["wt.exe"], "processes": ["WindowsTerminal.exe", "wt.exe"]},
+    "command prompt": {"label": "Command Prompt", "commands": ["cmd.exe"], "processes": ["cmd.exe"]},
+    "powershell": {"label": "PowerShell", "commands": ["powershell.exe"], "processes": ["powershell.exe"]},
+    "task manager": {"label": "Task Manager", "commands": ["taskmgr.exe"], "processes": ["Taskmgr.exe"]},
+    "paint": {"label": "Paint", "commands": ["mspaint.exe"], "processes": ["mspaint.exe"]},
+    "spotify": {
+        "label": "Spotify",
+        "commands": ["spotify.exe"],
+        "processes": ["Spotify.exe"],
+        "paths": [APP_DATA / "Spotify" / "Spotify.exe"],
+        "fallback_url": "https://open.spotify.com",
+    },
+    "discord": {
+        "label": "Discord",
+        "commands": ["Discord.exe"],
+        "processes": ["Discord.exe"],
+        "path_globs": [LOCAL_APP_DATA / "Discord" / "app-*" / "Discord.exe"],
+        "fallback_url": "https://discord.com/app",
+    },
+}
+
+APP_ALIASES = {
+    "google chrome": "chrome",
+    "microsoft edge": "edge",
+    "explorer": "file explorer",
+    "windows explorer": "file explorer",
+    "files": "file explorer",
+    "visual studio code": "vs code",
+    "vscode": "vs code",
+    "windows terminal": "terminal",
+    "cmd": "command prompt",
+    "power shell": "powershell",
+    "taskmanager": "task manager",
+    "ms paint": "paint",
+}
+
+
+def _run_detached(command: list[str]) -> subprocess.Popen:
+    return subprocess.Popen(
         command,
         stdin=subprocess.DEVNULL,
         stdout=subprocess.DEVNULL,
         stderr=subprocess.DEVNULL,
         creationflags=subprocess.CREATE_NEW_PROCESS_GROUP if os.name == "nt" else 0,
     )
+
+
+def _process_snapshot() -> set[str]:
+    if os.name != "nt":
+        return set()
+    try:
+        output = subprocess.check_output(
+            ["tasklist", "/fo", "csv", "/nh"],
+            text=True,
+            stderr=subprocess.DEVNULL,
+            creationflags=subprocess.CREATE_NO_WINDOW,
+        )
+    except (OSError, subprocess.SubprocessError):
+        return set()
+    return {line.split('","', 1)[0].strip('"').lower() for line in output.splitlines() if line.strip()}
+
+
+def _process_running(process_names: list[str]) -> bool:
+    if not process_names:
+        return True
+    if os.name != "nt":
+        return True
+    processes = _process_snapshot()
+    wanted = {name.lower() for name in process_names}
+    return bool(processes.intersection(wanted))
+
+
+def _wait_for_process(process_names: list[str], timeout: float = 4.0, expect_running: bool = True) -> bool:
+    deadline = time.time() + timeout
+    while time.time() < deadline:
+        running = _process_running(process_names)
+        if running == expect_running:
+            return True
+        time.sleep(0.25)
+    return _process_running(process_names) == expect_running
+
+
+def _launch_and_verify(command: list[str], label: str, process_names: list[str] | None = None) -> str:
+    try:
+        process = _run_detached(command)
+    except OSError as error:
+        return f"Could not open {label}: {error}"
+
+    if process_names and not _wait_for_process(process_names):
+        return f"{label} launch was attempted, but the process was not detected."
+    if not process_names and process.poll() not in (None, 0):
+        return f"{label} launch failed with exit code {process.poll()}."
+    return f"{label} opened successfully."
 
 
 def system_status() -> str:
@@ -42,12 +167,15 @@ def system_status() -> str:
 
 
 def list_desktop() -> str:
-    if not DESKTOP.exists():
-        return "Desktop folder was not found."
-    items = sorted(path.name for path in DESKTOP.iterdir())[:18]
-    if not items:
-        return "Desktop is currently empty."
-    return "Desktop scan complete. Items found: " + ", ".join(items)
+    def run() -> str:
+        if not DESKTOP.exists():
+            return "Desktop folder was not found."
+        items = sorted(path.name for path in DESKTOP.iterdir())[:18]
+        if not items:
+            return "Desktop is currently empty."
+        return "Desktop scan complete. Items found: " + ", ".join(items)
+
+    return guard_action("file.read", "scan desktop", run, path=DESKTOP)
 
 
 def current_time() -> str:
@@ -59,33 +187,48 @@ def current_date() -> str:
 
 
 def create_desktop_note() -> str:
-    DESKTOP.mkdir(parents=True, exist_ok=True)
     stamp = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
     path = DESKTOP / f"JX-JARVIS-note-{stamp}.txt"
-    path.write_text(
-        "JX JARVIS mission note\n"
-        f"Created: {datetime.now().isoformat(timespec='seconds')}\n\n"
-        "Add your task details here.\n",
-        encoding="utf-8",
-    )
-    return f"Created desktop note: {path.name}"
+
+    def run() -> str:
+        DESKTOP.mkdir(parents=True, exist_ok=True)
+        path.write_text(
+            "JX JARVIS mission note\n"
+            f"Created: {datetime.now().isoformat(timespec='seconds')}\n\n"
+            "Add your task details here.\n",
+            encoding="utf-8",
+        )
+        return f"Created desktop note: {path.name}"
+
+    return guard_action("file.create", f"create desktop note {path.name}", run, path=path)
 
 
 def open_folder(path: Path, label: str) -> str:
     if not path.exists():
         return f"{label} folder was not found."
-    _run_detached(["explorer.exe", str(path)])
-    return f"{label} folder opened."
+    return guard_action(
+        "file.read",
+        f"open {label} folder",
+        lambda: _launch_and_verify(["explorer.exe", str(path)], f"{label} folder", ["explorer.exe"]),
+        path=path,
+    )
 
 
 def open_website(url: str, label: str) -> str:
-    webbrowser.open(url)
-    return f"{label} opened."
+    def run() -> str:
+        opened = webbrowser.open(url)
+        return f"{label} opened in the browser." if opened else f"Could not open {label} in the browser."
+
+    return guard_action("browser.open", f"open {label}", run)
 
 
 def open_protocol(protocol: str, label: str) -> str:
-    _run_detached(["explorer.exe", protocol])
-    return f"{label} opened."
+    return guard_action(
+        "app.open",
+        f"open {label}",
+        lambda: _launch_and_verify(["explorer.exe", protocol], label, ["explorer.exe"]),
+        app=label,
+    )
 
 
 def _first_existing(paths: list[Path]) -> Path | None:
@@ -95,12 +238,115 @@ def _first_existing(paths: list[Path]) -> Path | None:
     return None
 
 
+def _first_glob(patterns: list[Path]) -> Path | None:
+    for pattern in patterns:
+        parent = pattern.parent
+        if not parent.parent.exists():
+            continue
+        matches = sorted(parent.parent.glob(f"{parent.name}/{pattern.name}"), reverse=True)
+        for match in matches:
+            if match.exists():
+                return match
+    return None
+
+
+def _app_config(target: str) -> dict | None:
+    normalized = " ".join(target.lower().strip().split())
+    normalized = normalized.removeprefix("the ").strip()
+    key = APP_ALIASES.get(normalized, normalized)
+    return APP_TARGETS.get(key)
+
+
+def _resolve_app_command(config: dict) -> list[str] | None:
+    for command in config.get("commands", []):
+        resolved = shutil.which(command)
+        if resolved:
+            return [resolved]
+
+    found = _first_existing(config.get("paths", []))
+    if found:
+        return [str(found)]
+
+    globbed = _first_glob(config.get("path_globs", []))
+    if globbed:
+        return [str(globbed)]
+
+    return None
+
+
+def open_app_target(target: str) -> str | None:
+    config = _app_config(target)
+    if not config:
+        return None
+
+    command = _resolve_app_command(config)
+    label = config["label"]
+    if command:
+        return guard_action(
+            "app.open",
+            f"open {label}",
+            lambda: _launch_and_verify(command, label, config.get("processes")),
+            app=label,
+        )
+
+    fallback_url = config.get("fallback_url")
+    if fallback_url:
+        return open_website(fallback_url, label)
+
+    return f"{label} was not found on this PC."
+
+
+def close_app_target(target: str) -> str | None:
+    config = _app_config(target)
+    if not config:
+        return None
+
+    label = config["label"]
+    processes = config.get("processes", [])
+    if not processes:
+        return f"{label} does not have a safe close mapping yet."
+    def run() -> str:
+        if not _process_running(processes):
+            return f"{label} is not running."
+
+        for process_name in processes:
+            subprocess.run(
+                ["taskkill", "/im", process_name, "/t", "/f"],
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+                creationflags=subprocess.CREATE_NO_WINDOW if os.name == "nt" else 0,
+                check=False,
+            )
+
+        if _wait_for_process(processes, timeout=4.0, expect_running=False):
+            return f"{label} closed successfully."
+        return f"Tried to close {label}, but it still appears to be running."
+
+    return guard_action("app.close", f"close {label}", run, app=label)
+
+
+def list_available_apps() -> list[dict[str, object]]:
+    apps = []
+    for key, config in APP_TARGETS.items():
+        command = _resolve_app_command(config)
+        processes = config.get("processes", [])
+        apps.append(
+            {
+                "id": key,
+                "label": config["label"],
+                "installed": bool(command),
+                "running": _process_running(processes),
+                "fallback_url": config.get("fallback_url"),
+            }
+        )
+    return apps
+
+
 def _open_app(exe_names: list[str], fallback_url: str | None, label: str) -> str:
     for exe in exe_names:
         resolved = shutil.which(exe)
         if resolved:
-            _run_detached([resolved])
-            return f"{label} opened."
+            return _launch_and_verify([resolved], label, [Path(exe).name])
 
     local_app_data = os.getenv("LOCALAPPDATA", "")
     program_files = os.getenv("ProgramFiles", "")
@@ -118,12 +364,10 @@ def _open_app(exe_names: list[str], fallback_url: str | None, label: str) -> str
         ]
     found = _first_existing(known_paths)
     if found:
-        _run_detached([str(found)])
-        return f"{label} opened."
+        return _launch_and_verify([str(found)], label, [found.name])
 
     if fallback_url:
-        webbrowser.open(fallback_url)
-        return f"{label} opened in the browser."
+        return open_website(fallback_url, label)
 
     return f"{label} was not found."
 
@@ -132,32 +376,57 @@ def _open_program(exe_names: list[str], label: str, fallback_url: str | None = N
     for exe in exe_names:
         resolved = shutil.which(exe)
         if resolved:
-            _run_detached([resolved])
-            return f"{label} opened."
+            return _launch_and_verify([resolved], label, [Path(exe).name])
 
     if fallback_url:
-        webbrowser.open(fallback_url)
-        return f"{label} opened in the browser."
+        return open_website(fallback_url, label)
 
     return f"{label} was not found."
 
 
 def open_chrome() -> str:
-    return _open_app(["chrome.exe", "chrome"], "https://www.google.com", "Chrome")
+    return open_app_target("chrome") or "Chrome was not found."
 
 
 def open_edge() -> str:
-    return _open_app(["msedge.exe", "msedge"], "https://www.google.com", "Edge")
+    return open_app_target("edge") or "Edge was not found."
 
 
 def open_screen_snip() -> str:
-    _run_detached(["explorer.exe", "ms-screenclip:"])
-    return "Screenshot snip opened."
+    return guard_action(
+        "app.open",
+        "open screenshot snip",
+        lambda: _launch_and_verify(["explorer.exe", "ms-screenclip:"], "Screenshot snip", ["explorer.exe"]),
+        app="Screenshot snip",
+    )
+
+
+def _power_action(action: str) -> str:
+    commands = {
+        "shutdown": ["shutdown", "/s", "/t", "15"],
+        "restart": ["shutdown", "/r", "/t", "15"],
+        "lock": ["rundll32.exe", "user32.dll,LockWorkStation"],
+    }
+    command = commands.get(action)
+    if not command:
+        return "Unsupported power action."
+
+    def run() -> str:
+        try:
+            _run_detached(command)
+        except OSError as error:
+            return f"Could not {action} this PC: {error}"
+        return f"{action.capitalize()} command started."
+
+    return guard_action("app.system", f"{action} this PC", run)
 
 
 def search_youtube(query: str) -> str:
-    webbrowser.open(f"https://www.youtube.com/results?search_query={quote_plus(query)}")
-    return f"Searching YouTube for {query}."
+    def run() -> str:
+        webbrowser.open(f"https://www.youtube.com/results?search_query={quote_plus(query)}")
+        return f"Searching YouTube for {query}."
+
+    return guard_action("internet.search", f"search YouTube for {query}", run)
 
 
 WEBSITE_TARGETS = {
@@ -189,6 +458,10 @@ def _open_common_target(target: str) -> str | None:
     normalized = normalized.removeprefix("the ").strip()
     normalized = normalized.replace("visual studio code", "vs code")
 
+    app_response = open_app_target(normalized)
+    if app_response:
+        return app_response
+
     if normalized in WEBSITE_TARGETS:
         url, label = WEBSITE_TARGETS[normalized]
         return open_website(url, label)
@@ -197,18 +470,6 @@ def _open_common_target(target: str) -> str | None:
         return open_protocol("ms-settings:", "Settings")
     if normalized in {"camera", "windows camera"}:
         return open_protocol("microsoft.windows.camera:", "Camera")
-    if normalized in {"task manager", "taskmanager"}:
-        return _open_program(["taskmgr.exe"], "Task Manager")
-    if normalized in {"paint", "ms paint"}:
-        return _open_program(["mspaint.exe"], "Paint")
-    if normalized in {"terminal", "windows terminal"}:
-        return _open_program(["wt.exe"], "Windows Terminal", fallback_url=None)
-    if normalized in {"command prompt", "cmd"}:
-        return _open_program(["cmd.exe"], "Command Prompt")
-    if normalized in {"powershell", "power shell"}:
-        return _open_program(["powershell.exe"], "PowerShell")
-    if normalized in {"spotify"}:
-        return _open_program(["spotify.exe"], "Spotify", fallback_url="https://open.spotify.com")
 
     if re.fullmatch(r"(https?://)?[a-z0-9-]+(\.[a-z0-9-]+)+(/[^\s]*)?", normalized):
         url = normalized if normalized.startswith(("http://", "https://")) else f"https://{normalized}"
@@ -231,30 +492,44 @@ def run_open_target_action(text: str) -> str | None:
     return _open_common_target(target)
 
 
+def run_close_target_action(text: str) -> str | None:
+    close_match = re.search(r"\b(?:close|quit|exit|stop)\s+(.+)$", text, re.IGNORECASE)
+    if not close_match:
+        return None
+
+    target = close_match.group(1).strip(" .")
+    if target.lower() in {"app", "application", "program", "window"}:
+        return None
+    return close_app_target(target)
+
+
 def play_music() -> str:
-    if not MUSIC.exists():
-        return "Music folder was not found."
+    def run() -> str:
+        if not MUSIC.exists():
+            return "Music folder was not found."
 
-    songs = [
-        path
-        for path in MUSIC.iterdir()
-        if path.is_file() and path.suffix.lower() in {".mp3", ".wav", ".m4a", ".flac", ".aac", ".wma"}
-    ]
-    if not songs:
-        return "No playable music files were found in your Music folder."
+        songs = [
+            path
+            for path in MUSIC.iterdir()
+            if path.is_file() and path.suffix.lower() in {".mp3", ".wav", ".m4a", ".flac", ".aac", ".wma"}
+        ]
+        if not songs:
+            return "No playable music files were found in your Music folder."
 
-    song = random.choice(songs)
-    os.startfile(song)
-    return f"Playing {song.name}."
+        song = random.choice(songs)
+        os.startfile(song)
+        return f"Playing {song.name}."
+
+    return guard_action("file.read", "play music from Music folder", run, path=MUSIC)
 
 
 TASKS = {
     "system_status": system_status,
     "list_desktop": list_desktop,
     "create_note": create_desktop_note,
-    "open_notepad": lambda: (_run_detached(["notepad.exe"]) or "Notepad opened."),
-    "open_calculator": lambda: (_run_detached(["calc.exe"]) or "Calculator opened."),
-    "open_explorer": lambda: (_run_detached(["explorer.exe", str(Path.home())]) or "File Explorer opened."),
+    "open_notepad": lambda: open_app_target("notepad") or "Notepad was not found.",
+    "open_calculator": lambda: open_app_target("calculator") or "Calculator was not found.",
+    "open_explorer": lambda: open_folder(Path.home(), "File Explorer"),
     "open_desktop": lambda: open_folder(DESKTOP, "Desktop"),
     "open_documents": lambda: open_folder(DOCUMENTS, "Documents"),
     "open_downloads": lambda: open_folder(DOWNLOADS, "Downloads"),
@@ -268,6 +543,9 @@ TASKS = {
     "open_chrome": open_chrome,
     "open_edge": open_edge,
     "take_screenshot": open_screen_snip,
+    "shutdown_pc": lambda: _power_action("shutdown"),
+    "restart_pc": lambda: _power_action("restart"),
+    "lock_pc": lambda: _power_action("lock"),
     "play_music": play_music,
     "open_vscode": open_code_workspace,
     "open_latest_code": open_latest_code_project,
@@ -334,6 +612,13 @@ COMMAND_ALIASES = {
     "open downloads": "open_downloads",
     "open pictures": "open_pictures",
     "open videos": "open_videos",
+    "shutdown pc": "shutdown_pc",
+    "shut down pc": "shutdown_pc",
+    "shutdown computer": "shutdown_pc",
+    "restart pc": "restart_pc",
+    "restart computer": "restart_pc",
+    "lock pc": "lock_pc",
+    "lock computer": "lock_pc",
 }
 
 
@@ -366,7 +651,7 @@ def _find_matching_paths(query: str, limit: int = 8) -> list[Path]:
 
     matches: list[Path] = []
     scanned = 0
-    for root in SAFE_FILE_ROOTS:
+    for root in accessible_roots(SAFE_FILE_ROOTS):
         if not root.exists():
             continue
         for path in root.rglob("*"):
@@ -384,23 +669,33 @@ def _format_matches(matches: list[Path]) -> str:
     return "\n".join(str(path) for path in matches)
 
 
+def _permission_error(*decisions) -> str | None:
+    for decision in decisions:
+        if not decision.allowed:
+            return decision.message
+    return None
+
+
 def _open_path_match(query: str) -> str:
     matches = _find_matching_paths(query, limit=3)
     if not matches:
         return f"No file or folder found for '{query}'."
 
-    os.startfile(matches[0])
-    return f"Opened: {matches[0]}"
+    return guard_action("file.read", f"open {matches[0]}", lambda: (os.startfile(matches[0]) or f"Opened: {matches[0]}"), path=matches[0])
 
 
 def _create_folder(name: str, root: Path) -> str:
-    try:
-        root.mkdir(parents=True, exist_ok=True)
-        target = root / _safe_file_name(name)
-        target.mkdir(exist_ok=True)
-    except OSError as error:
-        return f"Could not create folder: {error}"
-    return f"Folder ready: {target}"
+    target = root / _safe_file_name(name)
+
+    def run() -> str:
+        try:
+            root.mkdir(parents=True, exist_ok=True)
+            target.mkdir(exist_ok=True)
+        except OSError as error:
+            return f"Could not create folder: {error}"
+        return f"Folder ready: {target}"
+
+    return guard_action("file.create", f"create folder {target}", run, path=target)
 
 
 def _move_first_match(query: str, destination: Path) -> str:
@@ -409,6 +704,12 @@ def _move_first_match(query: str, destination: Path) -> str:
         return f"No file or folder found for '{query}'."
 
     source = matches[0]
+    target_decision = evaluate_permission("file.create", f"move to {destination}", path=destination)
+    source_decision = evaluate_permission("file.delete", f"move {source}", path=source)
+    denied = _permission_error(target_decision, source_decision)
+    if denied:
+        return denied
+
     destination.mkdir(parents=True, exist_ok=True)
     target = destination / source.name
     if target.exists():
@@ -430,6 +731,13 @@ def _rename_first_match(query: str, new_name: str) -> str:
     if source.is_file() and "." not in Path(clean_name).name and source.suffix:
         clean_name += source.suffix
     target = source.with_name(clean_name)
+    denied = _permission_error(
+        evaluate_permission("file.edit", f"rename {source}", path=source),
+        evaluate_permission("file.create", f"rename to {target}", path=target),
+    )
+    if denied:
+        return denied
+
     if target.exists():
         return f"Cannot rename. Target already exists: {target.name}"
     try:
@@ -445,6 +753,13 @@ def _trash_first_match(query: str) -> str:
         return f"No file or folder found for '{query}'."
 
     source = matches[0]
+    denied = _permission_error(
+        evaluate_permission("file.delete", f"delete {source}", path=source),
+        evaluate_permission("file.create", f"move to Jarvis trash", path=JARVIS_TRASH),
+    )
+    if denied:
+        return denied
+
     JARVIS_TRASH.mkdir(parents=True, exist_ok=True)
     target = JARVIS_TRASH / source.name
     if target.exists():
@@ -546,15 +861,20 @@ def extract_google_search(text: str) -> str | None:
 
 
 def open_google_search(query: str) -> str:
-    webbrowser.open(f"https://www.google.com/search?q={quote_plus(query)}")
-    return f"Searching Google for {query}."
+    def run() -> str:
+        webbrowser.open(f"https://www.google.com/search?q={quote_plus(query)}")
+        return f"Searching Google for {query}."
+
+    return guard_action("internet.search", f"search Google for {query}", run)
 
 
 def search_user_files(query: str) -> str:
     if not settings.system_tasks_enabled:
         return "System task access is disabled in configuration."
 
-    roots = [Path.home() / name for name in ("Desktop", "Documents", "Downloads", "Videos", "Pictures")]
+    roots = accessible_roots([Path.home() / name for name in ("Desktop", "Documents", "Downloads", "Videos", "Pictures")])
+    if not roots:
+        return "File search is blocked by Security & Permissions."
     matches: list[Path] = []
     lowered = query.lower()
     scanned = 0

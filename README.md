@@ -1,33 +1,172 @@
-# JX JARVIS
+# JX Jarvis
 
-JX JARVIS is a futuristic Windows desktop AI assistant built with Electron, React, TailwindCSS, Framer Motion, Python, Groq or Sarvam AI, SpeechRecognition, and Edge-TTS.
+**Autonomous AI Desktop Operating System**
 
-It runs as a real desktop app, listens through your microphone, wakes up when you say `Hey Jarvis`, sends commands to the configured AI provider, speaks back with a realistic voice, and can run safe allowlisted Windows tasks.
+JX Jarvis is a premium Windows desktop AI assistant created by **Jojin John**. It combines voice control, AI chat, browser automation, desktop actions, coding workflows, local memory, permissions, and multi-provider AI routing into one Electron desktop workspace.
 
-## Features
+Creator: [Jojin John](https://www.linkedin.com/in/jojin-john-74386b34a)
 
-- Real Windows desktop app with Electron
-- Futuristic compact Jarvis-style interface
-- Wake word mode: `Hey Jarvis`
-- Push-to-talk microphone button
-- Text command console
-- Groq or Sarvam AI responses
-- Edge-TTS voice output
-- File upload and local file intake
-- Safe Windows actions like opening Calculator, Explorer, YouTube, music, notes, and Desktop scan
-- Code-writing commands that create a local workspace and open it in VS Code
-- Persistent local memory for preferences you ask it to remember
-- Safer file actions with confirmation before move, rename, or trash
-- Packaging helpers for building a Windows installer
-- Production build support with Electron Builder
+## What Jarvis Does
 
-## Important Security Note
+JX Jarvis is built to do real work, not just reply with text.
 
-Never commit your real API keys.
+- Wake with "Hey Jarvis" or use manual voice/text commands.
+- Open and control desktop apps.
+- Run safe system actions.
+- Automate a visible browser with Playwright.
+- Search Google and YouTube visually.
+- Generate websites and local code projects.
+- Analyze projects and run build scripts.
+- Store local memory, conversations, workflows, and preferences.
+- Protect sensitive folders, files, apps, and actions with permissions.
+- Switch between cloud AI and local/offline AI providers.
+- Show live thinking, planning, execution logs, retries, and verification.
 
-This project uses a local `.env` file for secrets. The real `.env` file is ignored by Git through `.gitignore`. Only `.env.example` is safe to upload.
+## Documentation Website
 
-If you ever pasted a real key into GitHub, chat, screenshots, or public docs, immediately rotate that key in the provider dashboard.
+A complete static documentation and landing site is included in:
+
+```text
+documentation/
+```
+
+Open locally:
+
+```text
+documentation/index.html
+```
+
+The docs include installation, first-time setup, voice, browser automation, AI providers, memory, permissions, workflows, plugin system, and developer guide pages.
+
+## Core Features
+
+### Voice Assistant
+
+- Wake words: `Hey Jarvis`, `Jarvis`
+- English and Malayalam support
+- Manual voice activation
+- Background listening controls
+- Edge TTS, Sarvam TTS, and local voice routing hooks
+- Local Whisper route support when the dependency is installed
+
+### Visual Browser Automation
+
+- Real visible Playwright browser
+- Google search automation
+- YouTube search automation
+- Website opening and navigation
+- Click-by-text actions
+- Scrolling
+- Page summaries
+- Live screenshots, current URL, DOM summary, tabs, and browser logs
+
+### Autonomous Execution Engine
+
+- Understands user commands
+- Creates execution plans
+- Routes steps to tools
+- Shows live thinking timeline
+- Supports pause, resume, and cancel
+- Retries recoverable failures
+- Verifies results before reporting success
+
+### Desktop Control
+
+Jarvis can safely launch and control mapped local apps such as:
+
+- Chrome
+- Edge
+- VS Code
+- File Explorer
+- Terminal
+- Notepad
+- Calculator
+- YouTube, Google, GitHub, Gmail, WhatsApp web fallbacks
+
+### Coding Agent
+
+- Creates local code projects
+- Generates portfolio and website projects
+- Opens projects in VS Code
+- Analyzes project structure
+- Runs npm scripts when permitted
+- Stores project memory for later sessions
+
+### Memory System
+
+Jarvis asks where to store its local brain during onboarding.
+
+Memory structure:
+
+```text
+JarvisMemory/
+  conversations/
+  workflows/
+  projects/
+  preferences/
+  voice/
+  browser/
+  automation/
+  cache/
+  embeddings/
+  logs/
+  backups/
+  brain.sqlite3
+```
+
+Memory stays local unless the user explicitly exports it.
+
+### Security and Permissions
+
+Jarvis includes a permission system inspired by desktop privacy settings.
+
+Controls include:
+
+- Full System Access
+- Safe Mode
+- Auto Execution Mode
+- File System Access
+- Browser Control
+- Terminal Execution
+- App Control
+- Voice Activation
+- Automation Mode
+- Internet Access
+- Background Listening
+- Protected folders, files, and apps
+- Allowed workspaces
+- Action confirmation levels
+- Live action monitor
+
+Jarvis must not bypass protected areas or fake successful actions.
+
+### Multi-AI Provider System
+
+Jarvis supports cloud, local, and hybrid AI routing.
+
+Supported providers:
+
+- Groq
+- OpenAI
+- Claude / Anthropic
+- Gemini
+- OpenRouter
+- Ollama
+- local llama.cpp OpenAI-compatible server
+- Local Whisper for voice transcription
+- Sarvam, DeepSeek, and NVIDIA compatibility from earlier integrations
+
+Provider settings include:
+
+- API key management
+- Secure local key storage
+- Provider enable/disable
+- Test connection
+- Current model
+- Task routing for chat, coding, vision, voice, and automation
+- Offline mode
+- Hybrid failover
+- Temperature and token settings
 
 ## Tech Stack
 
@@ -35,335 +174,135 @@ Frontend:
 
 - React
 - Vite
-- TailwindCSS
+- Zustand
+- React Router
 - Framer Motion
-- Lucide React icons
+- Lucide icons
 
 Desktop:
 
 - Electron
 - Electron Builder
+- Tray mode
+- Global shortcuts
+- Native folder picker
+- Splash screen with startup audio
 
 Backend:
 
 - Python
 - Flask
 - Waitress
+- SQLite
+- Playwright
 - SpeechRecognition
 - sounddevice
-- Edge-TTS
-- playsound
+- Edge TTS
 
-AI:
+AI and Automation:
 
-- Groq API
-- Sarvam AI API
+- Groq SDK
+- OpenAI-compatible provider layer
+- Anthropic Claude API
+- Gemini API
+- OpenRouter API
+- Ollama local API
+- llama.cpp local API
+- Playwright visual browser operator
 
 ## Project Structure
 
 ```text
 JX-JARVIS/
-├── assets/
-│   ├── icon.ico
-│   ├── splash.png
-│   └── sounds/
-├── backend/
-│   ├── api/
-│   │   ├── file_ingest.py
-│   │   ├── groq_ai.py
-│   │   ├── routes.py
-│   │   ├── schemas.py
-│   │   └── system_tasks.py
-│   ├── app/
-│   │   ├── config.py
-│   │   └── main.py
-│   ├── voice/
-│   │   ├── recognizer.py
-│   │   └── speaker.py
-│   └── requirements.txt
-├── electron/
-│   ├── main.js
-│   ├── preload.js
-│   └── splash.js
-├── frontend/
-│   ├── src/
-│   │   ├── components/
-│   │   ├── lib/
-│   │   ├── App.jsx
-│   │   ├── index.css
-│   │   └── main.jsx
-│   ├── package.json
-│   └── vite.config.js
-├── scripts/
-│   ├── build-backend.ps1
-│   ├── generate-desktop-assets.ps1
-│   ├── setup-backend.ps1
-│   ├── start-backend.ps1
-│   └── start-electron.js
-├── .env.example
-├── .gitignore
-├── package.json
-└── README.md
+  assets/
+  backend/
+    agents/
+    api/
+    automation/
+    browser/
+    coding/
+    execution/
+    memory/
+    plugins/
+    providers/
+    safety/
+    system/
+    tools/
+    vision/
+    voice/
+  documentation/
+    index.html
+    docs/
+    styles/
+    scripts/
+    assets/
+    images/
+    pages/
+    videos/
+  electron/
+  frontend/
+    src/
+      components/
+      hooks/
+      layouts/
+      overlays/
+      pages/
+      services/
+      store/
+      widgets/
+      workflows/
+  scripts/
+  .env.example
+  package.json
+  README.md
 ```
 
 ## Requirements
 
-Install these before running the project:
-
 - Windows 10 or Windows 11
-- Node.js LTS
-- Python 3.11 or newer
-- A Groq API key or Sarvam AI API key
-- A working microphone
-- Internet connection for the configured AI provider, SpeechRecognition, and Edge-TTS
+- Node.js 20+
+- Python 3.11+
+- Git
+- Chrome or Microsoft Edge for visible browser automation
+- Microphone access for voice features
+- API key for at least one cloud provider, or Ollama/local model for offline AI
 
-## Setup
+## Installation
 
-### 1. Clone the repository
+Clone the repository:
 
 ```powershell
 git clone https://github.com/jojin1709/Jarvis-assistant.git
 cd Jarvis-assistant
 ```
 
-### 2. Install Node and Electron dependencies
+Install Node dependencies:
 
 ```powershell
-npm run install:all
+npm install
+npm --prefix frontend install
 ```
 
-### 3. Set up the Python backend
+Set up the Python backend:
 
 ```powershell
-powershell -ExecutionPolicy Bypass -File .\scripts\setup-backend.ps1
+cd backend
+python -m venv .venv
+.\.venv\Scripts\python.exe -m pip install --upgrade pip
+.\.venv\Scripts\python.exe -m pip install -r requirements.txt
+.\.venv\Scripts\python.exe -m playwright install chromium
+cd ..
 ```
 
-### 4. Create your private environment file
-
-```powershell
-Copy-Item .env.example .env
-```
-
-Open `.env` and choose your AI provider:
-
-```env
-JX_JARVIS_AI_PROVIDER=groq
-JX_JARVIS_TTS_PROVIDER=edge
-JX_JARVIS_STT_PROVIDER=google
-JX_JARVIS_DOCUMENT_INTELLIGENCE_PROVIDER=off
-GROQ_API_KEY=your_real_groq_api_key_here
-GROQ_MODEL=llama-3.3-70b-versatile
-SARVAM_API_KEY=your_real_sarvam_key_here
-SARVAM_MODEL=sarvam-30b
-SARVAM_BASE_URL=https://api.sarvam.ai
-SARVAM_TTS_MODEL=bulbul:v3
-SARVAM_TTS_LANGUAGE_CODE=auto
-SARVAM_TTS_SPEAKER=shubh
-SARVAM_TTS_SAMPLE_RATE=24000
-SARVAM_STT_MODEL=saaras:v3
-SARVAM_STT_MODE=transcribe
-SARVAM_DOC_LANGUAGE=en-IN
-SARVAM_DOC_OUTPUT_FORMAT=md
-DEEPSEEK_API_KEY=your_real_deepseek_key_here
-DEEPSEEK_MODEL=deepseek-v4-flash
-DEEPSEEK_BASE_URL=https://api.deepseek.com
-DEEPSEEK_THINKING=disabled
-NVIDIA_API_KEY=your_real_nvidia_key_here
-NVIDIA_MODEL=deepseek-ai/deepseek-v4-pro
-NVIDIA_BASE_URL=https://integrate.api.nvidia.com/v1
-NVIDIA_TOP_P=0.95
-NVIDIA_THINKING=false
-JX_JARVIS_VOICE=en-US-GuyNeural
-JX_JARVIS_MALAYALAM_VOICE=ml-IN-MidhunNeural
-JX_JARVIS_SPEECH_LANGUAGES=en-IN,ml-IN
-JX_JARVIS_OWNER_NAME=User
-JX_JARVIS_BACKEND_PORT=8765
-JX_JARVIS_ENABLE_SYSTEM_TASKS=true
-```
-
-Do not upload `.env` to GitHub.
-
-Provider options:
-
-- `JX_JARVIS_AI_PROVIDER=groq` uses Groq.
-- `JX_JARVIS_AI_PROVIDER=sarvam` uses Sarvam AI chat completions.
-- `JX_JARVIS_AI_PROVIDER=deepseek` uses DeepSeek chat completions.
-- `JX_JARVIS_AI_PROVIDER=nvidia` uses NVIDIA NIM/OpenAI-compatible chat completions.
-- `JX_JARVIS_AI_PROVIDER=auto` uses Sarvam when `SARVAM_API_KEY` exists, then DeepSeek when `DEEPSEEK_API_KEY` exists, then NVIDIA when `NVIDIA_API_KEY` exists, otherwise Groq.
-- `JX_JARVIS_TTS_PROVIDER=sarvam` uses Sarvam Bulbul for spoken replies.
-- `JX_JARVIS_STT_PROVIDER=sarvam` uses Sarvam Saaras for microphone transcription.
-- `JX_JARVIS_DOCUMENT_INTELLIGENCE_PROVIDER=sarvam` uses Sarvam document intelligence for uploaded PDFs.
-
-## How To Get A Groq API Key
-
-JX JARVIS uses Groq for AI replies. You need your own Groq API key before the assistant can answer AI commands.
-
-1. Open the official Groq API Keys page:
-
-```text
-https://console.groq.com/keys
-```
-
-2. Sign up or log in to GroqCloud.
-3. Click `Create API Key`.
-4. Give the key a clear name, for example `JX JARVIS Desktop`.
-5. Copy the key immediately. Groq will not show the full key again after you leave the page.
-6. In this project, copy `.env.example` to `.env` if you have not already done it:
+Create your private environment file:
 
 ```powershell
 Copy-Item .env.example .env
 ```
 
-7. Open `.env` and paste your key here:
+Open `.env` and add your provider keys. Do not commit `.env`.
 
-```env
-GROQ_API_KEY=paste_your_real_groq_key_here
-```
-
-8. Save `.env`, then restart JX JARVIS.
-
-Official Groq docs:
-
-- API Keys: https://console.groq.com/keys
-- Quickstart: https://console.groq.com/docs/quickstart
-- Security guidance: https://console.groq.com/docs/production-readiness/security-onboarding
-
-Security rules:
-
-- Never paste your real API key into GitHub, screenshots, Discord, YouTube, or public chat.
-- Never put the key inside frontend React code.
-- Keep it only in `.env` for development or `%APPDATA%\JX JARVIS\.env` for the installed app.
-- If a key is leaked, revoke it in the provider dashboard and create a new one.
-
-## How To Use Sarvam AI
-
-JX JARVIS can use Sarvam AI for assistant replies, code-generation prompts, file summaries, Malayalam normalization, text-to-speech, speech-to-text, and PDF document intelligence.
-
-1. Open the official Sarvam dashboard:
-
-```text
-https://dashboard.sarvam.ai/
-```
-
-2. Create a fresh API key.
-3. Configure `.env`:
-
-```env
-JX_JARVIS_AI_PROVIDER=sarvam
-JX_JARVIS_TTS_PROVIDER=sarvam
-JX_JARVIS_STT_PROVIDER=sarvam
-JX_JARVIS_DOCUMENT_INTELLIGENCE_PROVIDER=sarvam
-SARVAM_API_KEY=paste_your_real_sarvam_key_here
-SARVAM_MODEL=sarvam-105b
-SARVAM_BASE_URL=https://api.sarvam.ai
-SARVAM_TTS_MODEL=bulbul:v3
-SARVAM_TTS_LANGUAGE_CODE=auto
-SARVAM_TTS_SPEAKER=shubh
-SARVAM_STT_MODEL=saaras:v3
-SARVAM_STT_MODE=transcribe
-SARVAM_DOC_LANGUAGE=en-IN
-SARVAM_DOC_OUTPUT_FORMAT=md
-```
-
-4. Restart JX JARVIS.
-
-Sarvam docs:
-
-- Quickstart: https://docs.sarvam.ai/api-reference-docs/getting-started/quickstart
-- Chat completions: https://docs.sarvam.ai/api-reference-docs/chat/chat-completions
-- Text to speech: https://docs.sarvam.ai/api-reference-docs/text-to-speech/convert
-- Saaras speech to text: https://docs.sarvam.ai/api-reference-docs/models/saaras
-- Document intelligence: https://docs.sarvam.ai/api-reference-docs/api-guides-tutorials/document-intelligence/overview
-
-JX JARVIS is configured for English and Malayalam. Keep `SARVAM_TTS_LANGUAGE_CODE=auto` so Sarvam speaks English as `en-IN` and Malayalam as `ml-IN`.
-
-## How To Use DeepSeek
-
-JX JARVIS can use DeepSeek for assistant replies, code-generation prompts, file summaries, and Malayalam normalization.
-
-Configure `.env`:
-
-```env
-JX_JARVIS_AI_PROVIDER=deepseek
-DEEPSEEK_API_KEY=paste_your_real_deepseek_key_here
-DEEPSEEK_MODEL=deepseek-v4-flash
-DEEPSEEK_BASE_URL=https://api.deepseek.com
-DEEPSEEK_THINKING=disabled
-```
-
-Use `DEEPSEEK_THINKING=disabled` for fast assistant behavior, or `enabled` when you want more reasoning.
-
-DeepSeek docs:
-
-- Quickstart: https://api-docs.deepseek.com/
-- Chat completions: https://api-docs.deepseek.com/api/create-chat-completion
-
-## How To Use NVIDIA NIM
-
-JX JARVIS can use NVIDIA's OpenAI-compatible API endpoint for fast assistant replies, code-generation prompts, file summaries, and Malayalam normalization.
-
-Configure `.env`:
-
-```env
-JX_JARVIS_AI_PROVIDER=nvidia
-NVIDIA_API_KEY=paste_your_real_nvidia_key_here
-NVIDIA_MODEL=deepseek-ai/deepseek-v4-pro
-NVIDIA_BASE_URL=https://integrate.api.nvidia.com/v1
-NVIDIA_TOP_P=0.95
-NVIDIA_THINKING=false
-```
-
-NVIDIA docs:
-
-- API catalog: https://build.nvidia.com/
-- OpenAI-compatible endpoint: https://docs.api.nvidia.com/nim/reference/deepseek-ai-deepseek-v4-pro-infer
-
-## Privacy And Local Files
-
-This repository should contain only the files needed to build and run JX JARVIS on another computer.
-
-These files stay local and are ignored by Git:
-
-- `.env` and all real API keys
-- Generated voice audio in `backend/runtime/speech/`
-- Uploaded files in `backend/runtime/uploads/`
-- Saved local memory in `backend/runtime/memory.json`
-- Generated code projects in `JX-JARVIS-Code/`
-- Local trash/staging folders such as `JX-JARVIS-Trash/`
-- Personal startup audio such as `assets/sounds/startup.wav`, `assets/sounds/startup.mp3`, or root `startup.*`
-- Local downloaded reference images such as `ChatGPT Image*`
-
-Before pushing, run:
-
-```powershell
-git status
-```
-
-Only commit source code, safe example files, docs, and public assets. Do not commit personal files, secrets, generated speech, uploads, or private media.
-
-## User Name And Local Memory
-
-JX JARVIS does not ship with your personal name, interests, or saved memories. Each person who clones the repo gets their own local memory file at `backend/runtime/memory.json`, and that file is ignored by Git.
-
-Ways to set the current user's name:
-
-```env
-JX_JARVIS_OWNER_NAME=YourName
-```
-
-Or tell Jarvis:
-
-```text
-my name is Alex
-call me Alex
-remember my interest is web development
-what do you remember
-clear memory
-```
-
-If no name is configured or remembered, Jarvis uses the current computer account name when possible, otherwise it says `User`.
-
-## Run The Desktop App
+Run Jarvis:
 
 ```powershell
 npm run dev
@@ -371,252 +310,154 @@ npm run dev
 
 This starts:
 
-- React/Vite dev server on `127.0.0.1:5173`
-- Electron desktop window
-- Python backend on `127.0.0.1:8765`
+- Vite frontend at `127.0.0.1:5173`
+- Python backend at `127.0.0.1:8765`
+- Electron desktop application
 
-The app opens in its own desktop window. You do not need to open a browser tab.
+## Environment Variables
 
-## How To Use
-
-Wake word:
-
-```text
-Hey Jarvis
-ജാർവിസ്
-```
-
-One-shot commands:
-
-```text
-Hey Jarvis, what time is it
-Hey Jarvis, open YouTube
-Hey Jarvis, open calculator
-ജാർവിസ്, യൂട്യൂബ് തുറക്കൂ
-ജാർവിസ്, സമയം എത്രയാണ്
-ജാർവിസ്, snake game website ഉണ്ടാക്കൂ
-Hey Jarvis, search Google for React Electron desktop app
-Hey Jarvis, search YouTube for Python projects
-Hey Jarvis, open Chrome
-Hey Jarvis, remember that I prefer React
-Hey Jarvis, write code for a calculator website
-Hey Jarvis, create a Python script to organize downloads
-```
-
-Push-to-talk:
-
-1. Click `Speak`.
-2. Say your command.
-3. Wait for JX JARVIS to respond.
-
-Text command:
-
-1. Type in the command line at the bottom.
-2. Press Enter or click send.
-
-File upload:
-
-1. Click `Upload`.
-2. Select a text, code, image, audio, video, PDF, CSV, JSON, or Markdown file.
-3. JX JARVIS stores it locally and summarizes supported text-like files.
-
-## Supported Local Commands
-
-```text
-open calculator
-open notepad
-open explorer
-open youtube
-open google
-open gmail
-open github
-open whatsapp
-open chrome
-open edge
-take screenshot
-play music
-list desktop
-system status
-create note
-create folder Projects on desktop
-open file resume
-move file report to documents
-rename file old-name to new-name
-delete file temp
-remember that I like Python
-what do you remember
-what time is it
-what date is it
-find file README
-search desktop for video
-search google for Sarvam AI API
-search youtube for React tutorial
-open VS Code
-write code for a todo app
-open latest code
-test latest code
-```
-
-Generated code projects are saved on your Desktop in:
-
-```text
-JX-JARVIS-Code/
-```
-
-Move, rename, and delete commands ask for a confirmation token before they run. Delete moves the item into `Desktop\JX-JARVIS-Trash` instead of permanently deleting it.
-
-## Safety Model
-
-JX JARVIS does not run arbitrary shell commands from chat.
-
-Local system actions are allowlisted in:
-
-```text
-backend/api/system_tasks.py
-```
-
-To disable local desktop actions, set this in `.env`:
+Common provider keys:
 
 ```env
-JX_JARVIS_ENABLE_SYSTEM_TASKS=false
+GROQ_API_KEY=your_groq_key
+OPENAI_API_KEY=your_openai_key
+ANTHROPIC_API_KEY=your_anthropic_key
+GEMINI_API_KEY=your_gemini_key
+OPENROUTER_API_KEY=your_openrouter_key
+SARVAM_API_KEY=your_sarvam_key
+DEEPSEEK_API_KEY=your_deepseek_key
+NVIDIA_API_KEY=your_nvidia_key
 ```
 
-## Build For Production
+Local AI:
 
-Build the frontend:
+```env
+OLLAMA_BASE_URL=http://127.0.0.1:11434
+OLLAMA_MODEL=llama3.1
+LOCAL_LLAMACPP_BASE_URL=http://127.0.0.1:8080/v1
+LOCAL_LLAMACPP_MODEL=local-model
+```
+
+Voice:
+
+```env
+JX_JARVIS_TTS_PROVIDER=edge
+JX_JARVIS_STT_PROVIDER=google
+JX_JARVIS_VOICE=en-US-GuyNeural
+JX_JARVIS_MALAYALAM_VOICE=ml-IN-MidhunNeural
+JX_JARVIS_SPEECH_LANGUAGES=en-IN,ml-IN
+```
+
+## Using Ollama
+
+Install Ollama, then pull a model:
 
 ```powershell
-npm run build:frontend
+ollama pull llama3.1
+ollama serve
 ```
 
-Build the Python backend executable:
+Open Jarvis:
+
+```text
+Settings -> AI Providers -> Ollama
+```
+
+Enable Ollama, select the model, and use Offline Mode if you want local-only responses.
+
+## Common Commands
+
+Voice examples:
+
+```text
+Hey Jarvis, open Chrome
+Hey Jarvis, search Google for AI tools
+Hey Jarvis, open YouTube and search cybersecurity tutorials
+Hey Jarvis, create a beautiful portfolio website
+Hey Jarvis, what do you remember?
+```
+
+Text examples:
+
+```text
+open VS Code
+search google for latest AI news
+open downloads and show system status
+write code for a modern landing page
+create a note on desktop
+```
+
+## Build
+
+Build frontend:
 
 ```powershell
-npm run build:backend
+npm run build
 ```
 
-Create a Windows installer:
+Package app:
+
+```powershell
+npm run pack
+```
+
+Create Windows installer:
 
 ```powershell
 npm run dist
 ```
 
-Or double-click:
+## Privacy and Security
 
-```text
-Package JX JARVIS.bat
-```
+Never commit secrets.
 
-The installer is created in:
+Ignored local/private files include:
 
-```text
-release/JX JARVIS-Setup-1.0.0.exe
-```
+- `.env`
+- `.env.*`
+- `backend/.venv/`
+- `node_modules/`
+- `frontend/node_modules/`
+- `backend/runtime/`
+- generated speech files
+- uploaded files
+- local memory databases
+- packaged builds
+- generated installers
 
-The `release/` folder is ignored by Git because installers and build output should not be committed.
+If any API key was pasted in public chat, screenshots, GitHub, or recordings, rotate that key in the provider dashboard.
 
-## Using Secrets In The Installed App
+## Development Checks
 
-For development, place `.env` in the project root.
-
-For the installed Windows app, create this file:
-
-```text
-%APPDATA%\JX JARVIS\.env
-```
-
-Example full path:
-
-```text
-C:\Users\<your-name>\AppData\Roaming\JX JARVIS\.env
-```
-
-Put your AI provider keys there using the same format as `.env.example`.
-
-## Troubleshooting
-
-Backend offline:
-
-- Run `npm run backend` to see backend logs.
-- Make sure port `8765` is free.
-- Make sure Python dependencies installed successfully.
-
-No microphone input:
-
-- Enable microphone access in Windows Settings.
-- Check your default input device.
-- Try running the app as a normal desktop app, not inside a restricted terminal.
-
-No AI response:
-
-- Check that `.env` exists.
-- Check that `JX_JARVIS_AI_PROVIDER` is `groq`, `sarvam`, or `auto`.
-- Check that `GROQ_API_KEY`, `SARVAM_API_KEY`, `DEEPSEEK_API_KEY`, or `NVIDIA_API_KEY` is valid for the selected provider.
-- Restart the app after editing `.env`.
-
-No Sarvam voice or document output:
-
-- Run `powershell -ExecutionPolicy Bypass -File .\scripts\setup-backend.ps1` after pulling this version so `sarvamai` is installed.
-- Check `JX_JARVIS_TTS_PROVIDER`, `JX_JARVIS_STT_PROVIDER`, and `JX_JARVIS_DOCUMENT_INTELLIGENCE_PROVIDER`.
-- Sarvam document intelligence currently runs for uploaded PDFs and saves the returned ZIP next to the uploaded file in `backend/runtime/uploads/`.
-
-No voice output:
-
-- Check Windows sound output.
-- Make sure Edge-TTS has internet access.
-- Make sure `playsound` installed correctly.
-
-Electron opens but backend does not respond:
-
-- Run `npm run backend`.
-- In another terminal, run `npm run electron`.
-- Check whether another app is using port `8765`.
-
-## GitHub Upload Guide
-
-If this folder is not a Git repository yet:
+Compile backend:
 
 ```powershell
-git init
-git branch -M main
-git remote add origin https://github.com/jojin1709/Jarvis-assistant.git
-git add .
-git commit -m "Initial JX JARVIS desktop assistant"
-git push -u origin main
+backend\.venv\Scripts\python.exe -m compileall backend
 ```
 
-Before pushing, check what will be committed:
+Build frontend:
+
+```powershell
+npm run build
+```
+
+Check Git status before pushing:
 
 ```powershell
 git status
 ```
 
-Make sure these are not listed:
-
-```text
-.env
-node_modules/
-frontend/node_modules/
-backend/.venv/
-backend-dist/
-release/
-backend/runtime/uploads/
-backend/runtime/speech/
-```
-
 ## Contributing
 
-Helpful improvements are welcome:
+Good pull requests should:
 
-- Better wake-word detection
-- More UI themes
-- More safe local actions
-- Better offline speech recognition
-- Better file understanding
-- Installer improvements
-
-Please keep API keys, local files, generated audio, installers, and personal data out of pull requests.
+- Keep changes focused.
+- Avoid committing secrets or runtime data.
+- Preserve permission checks for real actions.
+- Avoid fake UI-only task execution.
+- Include documentation updates for new tools, providers, or workflows.
+- Verify backend compile and frontend build.
 
 ## License
 
-MIT License. See `LICENSE`.
+MIT License. See [LICENSE](LICENSE).
