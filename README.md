@@ -449,6 +449,11 @@ git status
 
 ## Contributing
 
+JX Jarvis is a source-available proprietary project created by Jojin John.
+Public users do not have direct edit access to the official application files or
+repository. Suggested changes must be submitted through pull requests and are
+accepted only if reviewed and merged by Jojin John.
+
 Good pull requests should:
 
 - Keep changes focused.
@@ -458,6 +463,15 @@ Good pull requests should:
 - Include documentation updates for new tools, providers, or workflows.
 - Verify backend compile and frontend build.
 
-## License
+See [CONTRIBUTING.md](CONTRIBUTING.md) for contribution rules.
 
-MIT License. See [LICENSE](LICENSE).
+## Ownership and License
+
+JX Jarvis is owned by Jojin John. The source is visible for transparency,
+learning, personal evaluation, and personal use, but it is not open-source
+software.
+
+You may not redistribute, sell, rebrand, publish modified builds, or claim this
+project as your own without written permission from Jojin John.
+
+See [LICENSE](LICENSE) and [NOTICE.md](NOTICE.md).
