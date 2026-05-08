@@ -1,7 +1,6 @@
 import re
 
-from groq import Groq
-
+from api.ai_provider import chat_ai_messages
 from app.config import settings
 
 
@@ -42,13 +41,11 @@ def command_language_instruction(language: str) -> str:
 
 
 def normalize_command_to_english(text: str, language: str) -> str:
-    if language != "ml" or not settings.groq_api_key:
+    if language != "ml" or not _has_ai_key():
         return _fallback_malayalam_command(text) if language == "ml" else text
 
     try:
-        client = Groq(api_key=settings.groq_api_key)
-        completion = client.chat.completions.create(
-            model=settings.groq_model,
+        translated = chat_ai_messages(
             temperature=0,
             max_tokens=180,
             messages=[
@@ -63,7 +60,7 @@ def normalize_command_to_english(text: str, language: str) -> str:
                 {"role": "user", "content": text},
             ],
         )
-        translated = completion.choices[0].message.content.strip().strip('"')
+        translated = translated.strip().strip('"')
         return translated or _fallback_malayalam_command(text)
     except Exception:
         return _fallback_malayalam_command(text)
@@ -73,13 +70,11 @@ def localize_response(text: str, language: str) -> str:
     if language != "ml" or not text.strip():
         return text
 
-    if not settings.groq_api_key:
+    if not _has_ai_key():
         return text
 
     try:
-        client = Groq(api_key=settings.groq_api_key)
-        completion = client.chat.completions.create(
-            model=settings.groq_model,
+        translated = chat_ai_messages(
             temperature=0.2,
             max_tokens=450,
             messages=[
@@ -94,9 +89,22 @@ def localize_response(text: str, language: str) -> str:
                 {"role": "user", "content": text},
             ],
         )
-        return completion.choices[0].message.content.strip() or text
+        return translated.strip() or text
     except Exception:
         return text
+
+
+def _has_ai_key() -> bool:
+    provider = settings.ai_provider
+    if provider == "sarvam":
+        return bool(settings.sarvam_api_key)
+    if provider == "deepseek":
+        return bool(settings.deepseek_api_key)
+    if provider == "nvidia":
+        return bool(settings.nvidia_api_key)
+    if provider == "auto":
+        return bool(settings.sarvam_api_key or settings.deepseek_api_key or settings.nvidia_api_key or settings.groq_api_key)
+    return bool(settings.groq_api_key)
 
 
 def _fallback_malayalam_command(text: str) -> str:

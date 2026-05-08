@@ -9,12 +9,10 @@ function splashHtml() {
     process.resourcesPath && fs.existsSync(path.join(process.resourcesPath, "assets"))
       ? process.resourcesPath
       : projectRoot;
-  const soundCandidates = [
-    { path: path.join(resourceRoot, "assets", "sounds", "startup.wav"), mime: "audio/wav" },
-    { path: path.join(resourceRoot, "assets", "sounds", "startup.mp3"), mime: "audio/mpeg" },
-  ];
-  const startupSound = soundCandidates.find((sound) => fs.existsSync(sound.path));
-  const soundSrc = startupSound ? pathToFileURL(startupSound.path).toString() : "";
+  const startupWav = path.join(resourceRoot, "assets", "sounds", "startup.wav");
+  const startupMp3 = path.join(resourceRoot, "assets", "sounds", "startup.mp3");
+  const startupSound = fs.existsSync(startupWav) ? startupWav : fs.existsSync(startupMp3) ? startupMp3 : "";
+  const soundSrc = startupSound ? pathToFileURL(startupSound).toString() : "";
 
   return `<!doctype html>
 <html>
@@ -27,9 +25,26 @@ function splashHtml() {
         width: 100vw;
         height: 100vh;
         overflow: hidden;
-        background: #02040a;
-        font-family: "Segoe UI", Arial, sans-serif;
-        color: #dffcff;
+        background:
+          radial-gradient(circle at 50% 0%, rgba(0,229,255,.13), transparent 34%),
+          radial-gradient(circle at 80% 20%, rgba(99,102,241,.13), transparent 30%),
+          #070B14;
+        color: #E6EDF3;
+        font-family: Inter, "Segoe UI", Arial, sans-serif;
+        opacity: 1;
+        transition: opacity 520ms ease, transform 520ms ease, filter 520ms ease;
+      }
+      body.fade-out {
+        opacity: 0;
+        transform: scale(.985);
+        filter: blur(8px);
+      }
+      body::before {
+        content: "";
+        position: fixed;
+        inset: 0;
+        opacity: .045;
+        background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 240 240' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.8' numOctaves='3' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='240' height='240' filter='url(%23n)' opacity='.55'/%3E%3C/svg%3E");
       }
       .shell {
         position: relative;
@@ -37,89 +52,132 @@ function splashHtml() {
         place-items: center;
         width: 100vw;
         height: 100vh;
-        border: 1px solid rgba(56, 246, 255, 0.45);
-        background:
-          radial-gradient(circle at 50% 44%, rgba(56,246,255,.2), transparent 24%),
-          radial-gradient(circle at 70% 20%, rgba(168,85,247,.14), transparent 28%),
-          linear-gradient(rgba(56,246,255,.05) 1px, transparent 1px),
-          linear-gradient(90deg, rgba(56,246,255,.05) 1px, transparent 1px);
-        background-size: auto, auto, 34px 34px, 34px 34px;
-        box-shadow: inset 0 0 60px rgba(56,246,255,.15);
+        border: 1px solid rgba(255,255,255,.06);
       }
-      .orb {
-        width: 168px;
-        height: 168px;
-        border-radius: 50%;
-        border: 1px solid rgba(125,239,255,.9);
-        background: radial-gradient(circle, rgba(223,252,255,.95) 0 11%, rgba(56,246,255,.22) 12% 39%, rgba(168,85,247,.12) 40% 100%);
-        box-shadow: 0 0 50px rgba(56,246,255,.55), inset 0 0 38px rgba(56,246,255,.32);
-        animation: pulse 1.45s ease-in-out infinite;
+      .content {
+        width: 420px;
+        text-align: center;
+        animation: scene .7s ease-out both;
       }
-      .ring, .ring2 {
-        position: absolute;
-        width: 240px;
-        height: 240px;
-        border: 1px solid rgba(56,246,255,.3);
-        border-radius: 50%;
-        animation: spin 4.2s linear infinite;
-      }
-      .ring2 {
-        width: 306px;
-        height: 306px;
-        border-color: rgba(168,85,247,.25);
-        animation-duration: 6.5s;
-        animation-direction: reverse;
+      .logo {
+        position: relative;
+        display: grid;
+        place-items: center;
+        width: 92px;
+        height: 92px;
+        margin: 0 auto;
+        border: 1px solid rgba(255,255,255,.08);
+        border-radius: 28px;
+        background: rgba(15,23,42,.72);
+        box-shadow: 0 24px 80px rgba(0,0,0,.35), 0 0 54px rgba(0,229,255,.12);
+        color: #00E5FF;
+        font-size: 25px;
+        font-weight: 700;
+        letter-spacing: -.04em;
+        animation: logoIn .8s .25s ease-out both, pulse 3.2s 1.2s ease-in-out infinite;
       }
       h1 {
-        margin: 34px 0 8px;
-        font-size: 34px;
-        letter-spacing: 10px;
-        font-weight: 700;
-        text-shadow: 0 0 22px rgba(56,246,255,.55);
+        margin: 26px 0 0;
+        font-size: 30px;
+        font-weight: 650;
+        letter-spacing: -.04em;
+        animation: fadeUp .65s .65s ease-out both;
       }
-      p {
-        margin: 0;
-        color: rgba(125,239,255,.75);
+      .subtitle {
+        margin: 8px 0 0;
+        color: #94A3B8;
+        font-size: 15px;
+        animation: fadeUp .65s .8s ease-out both;
+      }
+      .status {
+        margin-top: 28px;
+        color: #94A3B8;
+        font-size: 13px;
+        animation: fadeUp .65s 1s ease-out both;
+      }
+      .loader {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        gap: 5px;
+        height: 36px;
+        margin: 16px auto 0;
+        animation: fadeUp .65s 1.1s ease-out both;
+      }
+      .loader span {
+        width: 4px;
+        height: 10px;
+        border-radius: 999px;
+        background: #00E5FF;
+        opacity: .3;
+        animation: wave 1s ease-in-out infinite;
+      }
+      .loader span:nth-child(2) { animation-delay: .08s; }
+      .loader span:nth-child(3) { animation-delay: .16s; }
+      .loader span:nth-child(4) { animation-delay: .24s; }
+      .loader span:nth-child(5) { animation-delay: .32s; }
+      .items {
+        display: grid;
+        grid-template-columns: repeat(4, 1fr);
+        gap: 8px;
+        margin-top: 34px;
+        animation: fadeUp .65s 1.35s ease-out both;
+      }
+      .item {
+        border: 1px solid rgba(255,255,255,.06);
+        border-radius: 16px;
+        background: rgba(255,255,255,.035);
+        padding: 11px 8px;
+        color: #94A3B8;
         font-size: 12px;
-        letter-spacing: 5px;
       }
-      .bar {
-        width: 320px;
-        height: 2px;
-        margin-top: 26px;
-        background: rgba(56,246,255,.15);
-        overflow: hidden;
-      }
-      .bar::after {
-        content: "";
+      .dot {
         display: block;
-        width: 42%;
-        height: 100%;
-        background: linear-gradient(90deg, transparent, #38f6ff, transparent);
-        animation: boot 1.35s ease-in-out infinite;
+        width: 6px;
+        height: 6px;
+        margin: 0 auto 7px;
+        border-radius: 50%;
+        background: #00E5FF;
+        box-shadow: 0 0 18px rgba(0,229,255,.35);
+      }
+      @keyframes scene {
+        from { opacity: 0; transform: scale(.985); }
+        to { opacity: 1; transform: scale(1); }
+      }
+      @keyframes logoIn {
+        from { opacity: 0; transform: translateY(8px) scale(.95); }
+        to { opacity: 1; transform: translateY(0) scale(1); }
+      }
+      @keyframes fadeUp {
+        from { opacity: 0; transform: translateY(8px); }
+        to { opacity: 1; transform: translateY(0); }
       }
       @keyframes pulse {
-        0%, 100% { transform: scale(.97); opacity: .82; }
-        50% { transform: scale(1.04); opacity: 1; }
+        0%, 100% { box-shadow: 0 24px 80px rgba(0,0,0,.35), 0 0 44px rgba(0,229,255,.1); }
+        50% { box-shadow: 0 24px 80px rgba(0,0,0,.35), 0 0 68px rgba(0,229,255,.18); }
       }
-      @keyframes spin { to { transform: rotate(360deg); } }
-      @keyframes boot {
-        from { transform: translateX(-100%); }
-        to { transform: translateX(250%); }
+      @keyframes wave {
+        0%, 100% { height: 9px; opacity: .35; }
+        50% { height: 24px; opacity: .95; }
       }
     </style>
   </head>
   <body>
     <div class="shell">
-      <div>
-        <div style="position:relative;display:grid;place-items:center;height:320px">
-          <div class="ring"></div>
-          <div class="ring2"></div>
-          <div class="orb"></div>
+      <div class="content">
+        <div class="logo">JX</div>
+        <h1>JX Jarvis</h1>
+        <p class="subtitle">Personal AI Workspace</p>
+        <p class="status">Initializing systems...</p>
+        <div class="loader" aria-hidden="true">
+          <span></span><span></span><span></span><span></span><span></span>
         </div>
-        <h1>JX JARVIS</h1>
-        <p>BOOTING DESKTOP OPERATIONS CORE</p>
-        <div class="bar"></div>
+        <div class="items">
+          <div class="item"><span class="dot"></span>Secure</div>
+          <div class="item"><span class="dot"></span>Voice Engine</div>
+          <div class="item"><span class="dot"></span>Memory</div>
+          <div class="item"><span class="dot"></span>Workspace</div>
+        </div>
       </div>
     </div>
     ${
@@ -127,14 +185,51 @@ function splashHtml() {
         ? `<audio id="startup-audio" src="${soundSrc}" autoplay preload="auto"></audio>
     <script>
       const audio = document.getElementById("startup-audio");
-      if (audio) {
-        audio.volume = 0.9;
-        audio.play().catch(() => {
-          window.addEventListener("pointerdown", () => audio.play().catch(() => {}), { once: true });
-          window.setTimeout(() => audio.play().catch(() => {}), 250);
-          window.setTimeout(() => audio.play().catch(() => {}), 900);
+      window.__startupAudioStarted = false;
+      window.__startupAudioPlaying = false;
+      window.__startupAudioFailed = false;
+      window.__startupAudioSettled = false;
+      window.__startupAudioPromise = null;
+
+      window.startStartupAudioOnce = function startStartupAudioOnce() {
+        if (!audio) return Promise.resolve({ played: false, reason: "audio missing" });
+        if (window.__startupAudioPromise) return window.__startupAudioPromise;
+
+        audio.volume = 0.72;
+        audio.preload = "auto";
+
+        window.__startupAudioPromise = new Promise((resolve) => {
+          const finish = (result) => {
+            if (window.__startupAudioSettled) return;
+            window.__startupAudioSettled = true;
+            resolve(result);
+          };
+
+          audio.addEventListener("playing", () => {
+            window.__startupAudioPlaying = true;
+          });
+          audio.addEventListener("error", () => {
+            window.__startupAudioFailed = true;
+          });
+          audio.addEventListener("ended", () => finish({ played: true, reason: "ended" }), { once: true });
+
+          const play = () => {
+            if (window.__startupAudioStarted || window.__startupAudioSettled) return;
+            window.__startupAudioStarted = true;
+            audio.currentTime = 0;
+            audio.play().catch(() => {
+              window.__startupAudioStarted = false;
+              window.setTimeout(play, 450);
+              window.setTimeout(play, 1400);
+            });
+          };
+
+          play();
         });
-      }
+        return window.__startupAudioPromise;
+      };
+
+      window.startStartupAudioOnce();
     </script>`
         : ""
     }
@@ -156,7 +251,7 @@ function createSplashWindow() {
     transparent: false,
     resizable: false,
     show: false,
-    backgroundColor: "#02040a",
+    backgroundColor: "#070B14",
     icon,
     webPreferences: {
       sandbox: true,
@@ -169,7 +264,7 @@ function createSplashWindow() {
   return splash;
 }
 
-async function waitForStartupAudio(splash, timeoutMs = 18000) {
+async function waitForStartupAudio(splash, timeoutMs = 9000) {
   if (!splash || splash.isDestroyed()) return { played: false, reason: "splash missing" };
 
   try {
@@ -185,33 +280,36 @@ async function waitForStartupAudio(splash, timeoutMs = 18000) {
       `new Promise((resolve) => {
         const audio = document.getElementById("startup-audio");
         if (!audio) {
-          resolve({ played: false, reason: "audio file missing" });
+          window.setTimeout(() => resolve({ played: false, reason: "audio file missing" }), ${timeoutMs});
           return;
         }
 
-        let settled = false;
+        let waitSettled = false;
         const finish = (result) => {
-          if (settled) return;
-          settled = true;
+          if (waitSettled) return;
+          waitSettled = true;
           window.clearTimeout(timer);
           resolve(result);
         };
 
-        const timer = window.setTimeout(() => finish({ played: false, reason: "audio timeout" }), ${timeoutMs});
-        audio.volume = 1;
-        audio.currentTime = 0;
-        audio.addEventListener("ended", () => finish({ played: true, reason: "ended" }), { once: true });
-        audio.addEventListener("error", () => finish({ played: false, reason: "audio error" }), { once: true });
+        const timer = window.setTimeout(() => {
+          const playbackStarted = window.__startupAudioPlaying || (!audio.paused && audio.currentTime > 0);
+          if (!playbackStarted || window.__startupAudioFailed) {
+            finish({ played: false, reason: "audio timeout" });
+          }
+        }, ${timeoutMs});
+        if (audio.ended || window.__startupAudioSettled) {
+          finish({ played: true, reason: "ended" });
+          return;
+        }
 
-        audio.play().then(() => {
-          if (audio.ended) finish({ played: true, reason: "ended" });
-        }).catch(() => {
-          const message = document.querySelector("p");
-          if (message) message.textContent = "CLICK ONCE TO PLAY STARTUP AUDIO";
-          window.addEventListener("pointerdown", () => {
-            audio.play().catch(() => finish({ played: false, reason: "audio blocked" }));
-          }, { once: true });
-        });
+        if (typeof window.startStartupAudioOnce === "function") {
+          window.startStartupAudioOnce().then(finish).catch(() => {});
+        } else {
+          audio.volume = .72;
+          audio.addEventListener("ended", () => finish({ played: true, reason: "ended" }), { once: true });
+          audio.play().catch(() => {});
+        }
       })`,
       true,
     );
@@ -220,4 +318,20 @@ async function waitForStartupAudio(splash, timeoutMs = 18000) {
   }
 }
 
-module.exports = { createSplashWindow, waitForStartupAudio };
+async function fadeOutSplash(splash, durationMs = 560) {
+  if (!splash || splash.isDestroyed()) return;
+
+  try {
+    await splash.webContents.executeJavaScript(
+      `new Promise((resolve) => {
+        document.body.classList.add("fade-out");
+        window.setTimeout(resolve, ${durationMs});
+      })`,
+      true,
+    );
+  } catch {
+    await new Promise((resolve) => setTimeout(resolve, durationMs));
+  }
+}
+
+module.exports = { createSplashWindow, waitForStartupAudio, fadeOutSplash };

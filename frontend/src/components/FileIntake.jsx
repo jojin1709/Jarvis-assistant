@@ -18,7 +18,7 @@ export default function FileIntake({ disabled, onUpload }) {
 
   return (
     <section
-      className={`hud-panel group relative overflow-hidden p-4 ${dragging ? "border-cyanSoft bg-cyanCore/10" : ""}`}
+      className={`panel group relative overflow-hidden rounded-[28px] p-4 ${dragging ? "border-cyanCore/30 bg-cyanCore/10" : ""}`}
       onDragOver={(event) => {
         event.preventDefault();
         setDragging(true);
@@ -39,17 +39,17 @@ export default function FileIntake({ disabled, onUpload }) {
       />
       <div className="flex items-center justify-between">
         <div>
-          <p className="text-xs uppercase tracking-[0.28em] text-cyanSoft">File Intake</p>
-          <p className="mt-2 text-sm leading-relaxed text-white/65">Multimedia / code / documents</p>
+          <p className="text-sm font-semibold text-textPrimary">File intake</p>
+          <p className="mt-1 text-sm leading-relaxed text-textSecondary">Multimedia, code, and documents</p>
         </div>
-        <HardDriveUpload className="text-cyanSoft" size={24} />
+        <HardDriveUpload className="text-cyanCore" size={22} />
       </div>
 
       <button
         type="button"
         disabled={disabled}
         onClick={pickFile}
-        className="mt-4 flex h-12 w-full items-center justify-center gap-2 border border-cyanCore/45 bg-cyanCore/10 text-sm font-semibold uppercase tracking-[0.2em] text-cyanSoft transition hover:bg-cyanCore/20 disabled:opacity-40"
+        className="mt-4 flex h-12 w-full items-center justify-center gap-2 rounded-2xl border border-cyanCore/20 bg-cyanCore/10 text-sm font-semibold text-cyanCore transition hover:bg-cyanCore/15 disabled:opacity-40"
       >
         {disabled ? <Loader2 className="animate-spin" size={18} /> : <FileUp size={18} />}
         Upload
@@ -57,7 +57,7 @@ export default function FileIntake({ disabled, onUpload }) {
 
       <div className="mt-4 grid grid-cols-3 gap-2">
         {mediaTypes.map((type) => (
-          <span key={type} className="border border-cyanCore/15 bg-black/25 px-2 py-1 text-center text-[11px] uppercase tracking-[0.16em] text-cyanSoft/60">
+          <span key={type} className="rounded-xl border border-line bg-white/[0.03] px-2 py-1 text-center text-xs text-textSecondary">
             {type}
           </span>
         ))}

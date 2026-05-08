@@ -7,7 +7,11 @@ SYSTEM_PROMPT = """
 You are JX JARVIS, a cinematic desktop AI assistant.
 Personality: intelligent, calm, precise, friendly, futuristic, and concise.
 Style: sound like an advanced onboard assistant, but do not overdo theatrics.
-When useful, give direct steps. Keep spoken responses natural and brief.
+Primary behavior: act like a fast voice assistant. Be action-first, not guide-first.
+If the user asks for an action and it has already been handled by the app, acknowledge briefly.
+If the app cannot perform the action, say that briefly and offer one next step.
+Do not give tutorials, setup guides, or long explanations unless the user explicitly asks how to do something.
+Keep spoken responses natural and brief.
 Do not dump full source code in chat for build/create/write-code requests.
 If a coding command reaches this chat path, answer briefly: "I should create that in VS Code. Try again with: write code for <project>."
 """
@@ -42,6 +46,29 @@ Rules:
 """
 
 
+def chat_groq_messages(
+    messages: list[dict[str, str]],
+    temperature: float = 0.2,
+    max_tokens: int = 700,
+    response_format: dict[str, str] | None = None,
+) -> str:
+    if not settings.groq_api_key:
+        raise RuntimeError("GROQ API key is not configured.")
+
+    client = Groq(api_key=settings.groq_api_key)
+    kwargs = {
+        "model": settings.groq_model,
+        "temperature": temperature,
+        "max_tokens": max_tokens,
+        "messages": messages,
+    }
+    if response_format:
+        kwargs["response_format"] = response_format
+
+    completion = client.chat.completions.create(**kwargs)
+    return completion.choices[0].message.content.strip()
+
+
 def ask_groq(user_text: str, language_instruction: str = "Reply in English.") -> str:
     if not settings.groq_api_key:
         return (
@@ -49,17 +76,14 @@ def ask_groq(user_text: str, language_instruction: str = "Reply in English.") ->
             "then restart JX JARVIS."
         )
 
-    client = Groq(api_key=settings.groq_api_key)
-    completion = client.chat.completions.create(
-        model=settings.groq_model,
-        temperature=0.72,
-        max_tokens=700,
+    return chat_groq_messages(
         messages=[
             {"role": "system", "content": f"{SYSTEM_PROMPT.strip()}\n{language_instruction}".strip()},
             {"role": "user", "content": user_text},
         ],
+        temperature=0.72,
+        max_tokens=700,
     )
-    return completion.choices[0].message.content.strip()
 
 
 def ask_groq_code_project(user_text: str) -> str:
@@ -69,26 +93,22 @@ def ask_groq_code_project(user_text: str) -> str:
             '"files":[{"path":"README.md","content":"Add GROQ_API_KEY to .env, restart JX JARVIS, then ask again."}]}'
         )
 
-    client = Groq(api_key=settings.groq_api_key)
     messages = [
         {"role": "system", "content": CODE_PROJECT_PROMPT.strip()},
         {"role": "user", "content": user_text},
     ]
     try:
-        completion = client.chat.completions.create(
-            model=settings.groq_model,
-            temperature=0.35,
-            max_tokens=5600,
+        return chat_groq_messages(
             response_format={"type": "json_object"},
             messages=messages,
+            temperature=0.35,
+            max_tokens=5600,
         )
     except Exception as error:
         if "response_format" not in str(error).lower() and "json" not in str(error).lower():
             raise
-        completion = client.chat.completions.create(
-            model=settings.groq_model,
+        return chat_groq_messages(
+            messages=messages,
             temperature=0.35,
             max_tokens=5600,
-            messages=messages,
         )
-    return completion.choices[0].message.content.strip()

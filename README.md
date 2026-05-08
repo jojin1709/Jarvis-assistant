@@ -1,8 +1,8 @@
 # JX JARVIS
 
-JX JARVIS is a futuristic Windows desktop AI assistant built with Electron, React, TailwindCSS, Framer Motion, Python, Groq, SpeechRecognition, and Edge-TTS.
+JX JARVIS is a futuristic Windows desktop AI assistant built with Electron, React, TailwindCSS, Framer Motion, Python, Groq or Sarvam AI, SpeechRecognition, and Edge-TTS.
 
-It runs as a real desktop app, listens through your microphone, wakes up when you say `Hey Jarvis`, sends commands to Groq, speaks back with a realistic voice, and can run safe allowlisted Windows tasks.
+It runs as a real desktop app, listens through your microphone, wakes up when you say `Hey Jarvis`, sends commands to the configured AI provider, speaks back with a realistic voice, and can run safe allowlisted Windows tasks.
 
 ## Features
 
@@ -11,7 +11,7 @@ It runs as a real desktop app, listens through your microphone, wakes up when yo
 - Wake word mode: `Hey Jarvis`
 - Push-to-talk microphone button
 - Text command console
-- Groq AI responses
+- Groq or Sarvam AI responses
 - Edge-TTS voice output
 - File upload and local file intake
 - Safe Windows actions like opening Calculator, Explorer, YouTube, music, notes, and Desktop scan
@@ -27,7 +27,7 @@ Never commit your real API keys.
 
 This project uses a local `.env` file for secrets. The real `.env` file is ignored by Git through `.gitignore`. Only `.env.example` is safe to upload.
 
-If you ever pasted a real key into GitHub, immediately rotate that key in your Groq dashboard.
+If you ever pasted a real key into GitHub, chat, screenshots, or public docs, immediately rotate that key in the provider dashboard.
 
 ## Tech Stack
 
@@ -57,6 +57,7 @@ Backend:
 AI:
 
 - Groq API
+- Sarvam AI API
 
 ## Project Structure
 
@@ -112,9 +113,9 @@ Install these before running the project:
 - Windows 10 or Windows 11
 - Node.js LTS
 - Python 3.11 or newer
-- A Groq API key
+- A Groq API key or Sarvam AI API key
 - A working microphone
-- Internet connection for Groq, SpeechRecognition, and Edge-TTS
+- Internet connection for the configured AI provider, SpeechRecognition, and Edge-TTS
 
 ## Setup
 
@@ -143,11 +144,35 @@ powershell -ExecutionPolicy Bypass -File .\scripts\setup-backend.ps1
 Copy-Item .env.example .env
 ```
 
-Open `.env` and add your own Groq key:
+Open `.env` and choose your AI provider:
 
 ```env
+JX_JARVIS_AI_PROVIDER=groq
+JX_JARVIS_TTS_PROVIDER=edge
+JX_JARVIS_STT_PROVIDER=google
+JX_JARVIS_DOCUMENT_INTELLIGENCE_PROVIDER=off
 GROQ_API_KEY=your_real_groq_api_key_here
 GROQ_MODEL=llama-3.3-70b-versatile
+SARVAM_API_KEY=your_real_sarvam_key_here
+SARVAM_MODEL=sarvam-30b
+SARVAM_BASE_URL=https://api.sarvam.ai
+SARVAM_TTS_MODEL=bulbul:v3
+SARVAM_TTS_LANGUAGE_CODE=auto
+SARVAM_TTS_SPEAKER=shubh
+SARVAM_TTS_SAMPLE_RATE=24000
+SARVAM_STT_MODEL=saaras:v3
+SARVAM_STT_MODE=transcribe
+SARVAM_DOC_LANGUAGE=en-IN
+SARVAM_DOC_OUTPUT_FORMAT=md
+DEEPSEEK_API_KEY=your_real_deepseek_key_here
+DEEPSEEK_MODEL=deepseek-v4-flash
+DEEPSEEK_BASE_URL=https://api.deepseek.com
+DEEPSEEK_THINKING=disabled
+NVIDIA_API_KEY=your_real_nvidia_key_here
+NVIDIA_MODEL=deepseek-ai/deepseek-v4-pro
+NVIDIA_BASE_URL=https://integrate.api.nvidia.com/v1
+NVIDIA_TOP_P=0.95
+NVIDIA_THINKING=false
 JX_JARVIS_VOICE=en-US-GuyNeural
 JX_JARVIS_MALAYALAM_VOICE=ml-IN-MidhunNeural
 JX_JARVIS_SPEECH_LANGUAGES=en-IN,ml-IN
@@ -157,6 +182,17 @@ JX_JARVIS_ENABLE_SYSTEM_TASKS=true
 ```
 
 Do not upload `.env` to GitHub.
+
+Provider options:
+
+- `JX_JARVIS_AI_PROVIDER=groq` uses Groq.
+- `JX_JARVIS_AI_PROVIDER=sarvam` uses Sarvam AI chat completions.
+- `JX_JARVIS_AI_PROVIDER=deepseek` uses DeepSeek chat completions.
+- `JX_JARVIS_AI_PROVIDER=nvidia` uses NVIDIA NIM/OpenAI-compatible chat completions.
+- `JX_JARVIS_AI_PROVIDER=auto` uses Sarvam when `SARVAM_API_KEY` exists, then DeepSeek when `DEEPSEEK_API_KEY` exists, then NVIDIA when `NVIDIA_API_KEY` exists, otherwise Groq.
+- `JX_JARVIS_TTS_PROVIDER=sarvam` uses Sarvam Bulbul for spoken replies.
+- `JX_JARVIS_STT_PROVIDER=sarvam` uses Sarvam Saaras for microphone transcription.
+- `JX_JARVIS_DOCUMENT_INTELLIGENCE_PROVIDER=sarvam` uses Sarvam document intelligence for uploaded PDFs.
 
 ## How To Get A Groq API Key
 
@@ -197,7 +233,90 @@ Security rules:
 - Never paste your real API key into GitHub, screenshots, Discord, YouTube, or public chat.
 - Never put the key inside frontend React code.
 - Keep it only in `.env` for development or `%APPDATA%\JX JARVIS\.env` for the installed app.
-- If a key is leaked, revoke it in GroqCloud and create a new one.
+- If a key is leaked, revoke it in the provider dashboard and create a new one.
+
+## How To Use Sarvam AI
+
+JX JARVIS can use Sarvam AI for assistant replies, code-generation prompts, file summaries, Malayalam normalization, text-to-speech, speech-to-text, and PDF document intelligence.
+
+1. Open the official Sarvam dashboard:
+
+```text
+https://dashboard.sarvam.ai/
+```
+
+2. Create a fresh API key.
+3. Configure `.env`:
+
+```env
+JX_JARVIS_AI_PROVIDER=sarvam
+JX_JARVIS_TTS_PROVIDER=sarvam
+JX_JARVIS_STT_PROVIDER=sarvam
+JX_JARVIS_DOCUMENT_INTELLIGENCE_PROVIDER=sarvam
+SARVAM_API_KEY=paste_your_real_sarvam_key_here
+SARVAM_MODEL=sarvam-105b
+SARVAM_BASE_URL=https://api.sarvam.ai
+SARVAM_TTS_MODEL=bulbul:v3
+SARVAM_TTS_LANGUAGE_CODE=auto
+SARVAM_TTS_SPEAKER=shubh
+SARVAM_STT_MODEL=saaras:v3
+SARVAM_STT_MODE=transcribe
+SARVAM_DOC_LANGUAGE=en-IN
+SARVAM_DOC_OUTPUT_FORMAT=md
+```
+
+4. Restart JX JARVIS.
+
+Sarvam docs:
+
+- Quickstart: https://docs.sarvam.ai/api-reference-docs/getting-started/quickstart
+- Chat completions: https://docs.sarvam.ai/api-reference-docs/chat/chat-completions
+- Text to speech: https://docs.sarvam.ai/api-reference-docs/text-to-speech/convert
+- Saaras speech to text: https://docs.sarvam.ai/api-reference-docs/models/saaras
+- Document intelligence: https://docs.sarvam.ai/api-reference-docs/api-guides-tutorials/document-intelligence/overview
+
+JX JARVIS is configured for English and Malayalam. Keep `SARVAM_TTS_LANGUAGE_CODE=auto` so Sarvam speaks English as `en-IN` and Malayalam as `ml-IN`.
+
+## How To Use DeepSeek
+
+JX JARVIS can use DeepSeek for assistant replies, code-generation prompts, file summaries, and Malayalam normalization.
+
+Configure `.env`:
+
+```env
+JX_JARVIS_AI_PROVIDER=deepseek
+DEEPSEEK_API_KEY=paste_your_real_deepseek_key_here
+DEEPSEEK_MODEL=deepseek-v4-flash
+DEEPSEEK_BASE_URL=https://api.deepseek.com
+DEEPSEEK_THINKING=disabled
+```
+
+Use `DEEPSEEK_THINKING=disabled` for fast assistant behavior, or `enabled` when you want more reasoning.
+
+DeepSeek docs:
+
+- Quickstart: https://api-docs.deepseek.com/
+- Chat completions: https://api-docs.deepseek.com/api/create-chat-completion
+
+## How To Use NVIDIA NIM
+
+JX JARVIS can use NVIDIA's OpenAI-compatible API endpoint for fast assistant replies, code-generation prompts, file summaries, and Malayalam normalization.
+
+Configure `.env`:
+
+```env
+JX_JARVIS_AI_PROVIDER=nvidia
+NVIDIA_API_KEY=paste_your_real_nvidia_key_here
+NVIDIA_MODEL=deepseek-ai/deepseek-v4-pro
+NVIDIA_BASE_URL=https://integrate.api.nvidia.com/v1
+NVIDIA_TOP_P=0.95
+NVIDIA_THINKING=false
+```
+
+NVIDIA docs:
+
+- API catalog: https://build.nvidia.com/
+- OpenAI-compatible endpoint: https://docs.api.nvidia.com/nim/reference/deepseek-ai-deepseek-v4-pro-infer
 
 ## Privacy And Local Files
 
@@ -330,7 +449,7 @@ what time is it
 what date is it
 find file README
 search desktop for video
-search google for Groq API
+search google for Sarvam AI API
 search youtube for React tutorial
 open VS Code
 write code for a todo app
@@ -412,7 +531,7 @@ Example full path:
 C:\Users\<your-name>\AppData\Roaming\JX JARVIS\.env
 ```
 
-Put your Groq key there using the same format as `.env.example`.
+Put your AI provider keys there using the same format as `.env.example`.
 
 ## Troubleshooting
 
@@ -428,11 +547,18 @@ No microphone input:
 - Check your default input device.
 - Try running the app as a normal desktop app, not inside a restricted terminal.
 
-No Groq response:
+No AI response:
 
 - Check that `.env` exists.
-- Check that `GROQ_API_KEY` is valid.
+- Check that `JX_JARVIS_AI_PROVIDER` is `groq`, `sarvam`, or `auto`.
+- Check that `GROQ_API_KEY`, `SARVAM_API_KEY`, `DEEPSEEK_API_KEY`, or `NVIDIA_API_KEY` is valid for the selected provider.
 - Restart the app after editing `.env`.
+
+No Sarvam voice or document output:
+
+- Run `powershell -ExecutionPolicy Bypass -File .\scripts\setup-backend.ps1` after pulling this version so `sarvamai` is installed.
+- Check `JX_JARVIS_TTS_PROVIDER`, `JX_JARVIS_STT_PROVIDER`, and `JX_JARVIS_DOCUMENT_INTELLIGENCE_PROVIDER`.
+- Sarvam document intelligence currently runs for uploaded PDFs and saves the returned ZIP next to the uploaded file in `backend/runtime/uploads/`.
 
 No voice output:
 

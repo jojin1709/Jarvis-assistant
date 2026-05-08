@@ -1,6 +1,6 @@
 # JX JARVIS Backend
 
-Python Flask backend for microphone input, SpeechRecognition, Groq AI responses, Edge-TTS synthesis, audio playback, file intake, and safe local system actions.
+Python Flask backend for microphone input, SpeechRecognition or Sarvam Saaras transcription, Groq, Sarvam, DeepSeek, or NVIDIA AI responses, Edge-TTS or Sarvam Bulbul synthesis, Sarvam document intelligence, file intake, and safe local system actions.
 
 Key endpoints:
 

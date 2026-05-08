@@ -3,33 +3,31 @@ export default {
   theme: {
     extend: {
       colors: {
-        void: "#02040a",
-        panel: "rgba(5, 16, 28, 0.74)",
-        cyanCore: "#38f6ff",
-        cyanSoft: "#7defff",
-        violetCore: "#a855f7",
+        void: "#070B14",
+        panel: "rgba(15,23,42,0.72)",
+        cyanCore: "#00E5FF",
+        cyanSoft: "#8BEFFF",
+        textPrimary: "#E6EDF3",
+        textSecondary: "#94A3B8",
+        line: "rgba(255,255,255,0.06)",
       },
       fontFamily: {
-        display: ["Orbitron", "Rajdhani", "Segoe UI", "sans-serif"],
-        body: ["Rajdhani", "Segoe UI", "sans-serif"],
+        display: ["Geist", "Inter", "Segoe UI", "sans-serif"],
+        body: ["Inter", "Geist", "Segoe UI", "sans-serif"],
       },
       boxShadow: {
-        neon: "0 0 24px rgba(56, 246, 255, 0.38)",
-        panel: "0 0 32px rgba(20, 184, 255, 0.12)",
+        premium: "0 24px 80px rgba(0, 0, 0, 0.38)",
+        soft: "0 16px 48px rgba(0, 0, 0, 0.22)",
+        accent: "0 18px 60px rgba(0, 229, 255, 0.12)",
       },
       keyframes: {
-        scan: {
-          "0%": { transform: "translateY(-100%)" },
-          "100%": { transform: "translateY(100%)" },
-        },
-        hudPulse: {
-          "0%, 100%": { opacity: "0.35" },
-          "50%": { opacity: "0.92" },
+        softPulse: {
+          "0%, 100%": { opacity: "0.55", transform: "scale(1)" },
+          "50%": { opacity: "1", transform: "scale(1.04)" },
         },
       },
       animation: {
-        scan: "scan 7s linear infinite",
-        hudPulse: "hudPulse 2.8s ease-in-out infinite",
+        softPulse: "softPulse 3.2s ease-in-out infinite",
       },
     },
   },

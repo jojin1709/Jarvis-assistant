@@ -15,14 +15,14 @@ export default function WindowTitleBar() {
   }, [desktop]);
 
   return (
-    <div className="window-drag flex h-11 shrink-0 items-center justify-between border-b border-cyanCore/20 bg-black/55 pl-4 backdrop-blur-xl">
+    <div className="window-drag flex h-11 shrink-0 items-center justify-between border-b border-line bg-[#070B14]/70 pl-4 backdrop-blur-2xl">
       <div className="flex items-center gap-3">
-        <div className="grid h-6 w-6 place-items-center border border-cyanCore/40 bg-cyanCore/10 text-[10px] font-bold text-cyanSoft shadow-neon">
+        <div className="grid h-6 w-6 place-items-center rounded-lg border border-white/10 bg-white/[0.04] text-[11px] font-semibold text-cyanCore">
           JX
         </div>
-        <div>
-          <p className="text-xs font-semibold uppercase tracking-[0.24em] text-white/85">JX JARVIS</p>
-          <p className="text-[10px] uppercase tracking-[0.2em] text-cyanSoft/55">Standalone Desktop Core</p>
+        <div className="flex items-baseline gap-2">
+          <p className="text-sm font-semibold text-textPrimary">JX Jarvis</p>
+          <p className="text-xs text-textSecondary">Personal AI Workspace</p>
         </div>
       </div>
 
@@ -30,7 +30,7 @@ export default function WindowTitleBar() {
         <button
           type="button"
           onClick={() => desktop?.minimize?.()}
-          className="grid h-11 w-12 place-items-center text-cyanSoft/80 transition hover:bg-cyanCore/10 hover:text-white"
+          className="grid h-11 w-12 place-items-center rounded-none text-textSecondary transition hover:bg-white/[0.06] hover:text-textPrimary"
           title="Minimize"
         >
           <Minus size={16} />
@@ -38,7 +38,7 @@ export default function WindowTitleBar() {
         <button
           type="button"
           onClick={() => desktop?.maximize?.()}
-          className="grid h-11 w-12 place-items-center text-cyanSoft/80 transition hover:bg-cyanCore/10 hover:text-white"
+          className="grid h-11 w-12 place-items-center rounded-none text-textSecondary transition hover:bg-white/[0.06] hover:text-textPrimary"
           title={maximized ? "Restore" : "Maximize"}
         >
           {maximized ? <Square size={14} /> : <Maximize2 size={15} />}
@@ -46,7 +46,7 @@ export default function WindowTitleBar() {
         <button
           type="button"
           onClick={() => desktop?.close?.()}
-          className="grid h-11 w-12 place-items-center text-cyanSoft/80 transition hover:bg-red-500/75 hover:text-white"
+          className="grid h-11 w-12 place-items-center rounded-none text-textSecondary transition hover:bg-red-500/80 hover:text-white"
           title="Close"
         >
           <X size={17} />

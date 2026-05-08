@@ -4,7 +4,8 @@ from pathlib import Path
 from werkzeug.datastructures import FileStorage
 from werkzeug.utils import secure_filename
 
-from api.groq_ai import ask_groq
+from api.ai_provider import ask_ai
+from api.sarvam_services import analyze_sarvam_document
 from app.config import settings
 
 
@@ -25,6 +26,7 @@ TEXT_EXTENSIONS = {
     ".yml",
     ".yaml",
 }
+DOCUMENT_INTELLIGENCE_EXTENSIONS = {".pdf"}
 
 
 def _read_text(path: Path) -> str:
@@ -48,8 +50,30 @@ def save_and_analyze(file: FileStorage) -> dict[str, str | int | bool | None]:
     mime_type = mimetypes.guess_type(output_path.name)[0] or "application/octet-stream"
     extension = output_path.suffix.lower()
     text_indexed = extension in TEXT_EXTENSIONS
+    document_output = None
+    document_intelligence_used = False
 
-    if text_indexed:
+    if _should_use_document_intelligence(extension):
+        document_intelligence_used = True
+        try:
+            document_result = analyze_sarvam_document(output_path)
+            document_output = document_result.get("output_zip")
+            extracted_text = str(document_result.get("extracted_text") or "")
+            if document_result.get("success") and extracted_text:
+                prompt = (
+                    "Summarize this Sarvam document intelligence extraction for JX JARVIS. "
+                    "Give a concise useful summary, important details, and suggested next actions.\n\n"
+                    f"File name: {output_path.name}\n"
+                    f"Extracted content:\n{extracted_text[:12000]}"
+                )
+                summary = ask_ai(prompt)
+            else:
+                summary = str(document_result.get("summary") or "Sarvam document intelligence completed.")
+        except Exception as error:
+            summary = (
+                f"File received and stored: {output_path.name}. Sarvam document intelligence failed: {error}"
+            )
+    elif text_indexed:
         content = _read_text(output_path)
         prompt = (
             "Analyze this uploaded file for JX JARVIS. Give a concise useful summary, "
@@ -57,7 +81,7 @@ def save_and_analyze(file: FileStorage) -> dict[str, str | int | bool | None]:
             f"File name: {output_path.name}\n"
             f"Content:\n{content}"
         )
-        summary = ask_groq(prompt)
+        summary = ask_ai(prompt)
     else:
         summary = (
             f"File received and stored: {output_path.name}. Type detected: {mime_type}. "
@@ -71,5 +95,18 @@ def save_and_analyze(file: FileStorage) -> dict[str, str | int | bool | None]:
         "size": size,
         "mime_type": mime_type,
         "text_indexed": text_indexed,
+        "document_intelligence_used": document_intelligence_used,
+        "document_output": document_output,
         "summary": summary,
     }
+
+
+def _should_use_document_intelligence(extension: str) -> bool:
+    provider = settings.document_intelligence_provider
+    if provider == "off":
+        return False
+    if provider == "sarvam":
+        return bool(settings.sarvam_api_key) and extension in DOCUMENT_INTELLIGENCE_EXTENSIONS
+    if provider == "auto":
+        return bool(settings.sarvam_api_key) and extension in DOCUMENT_INTELLIGENCE_EXTENSIONS
+    return False

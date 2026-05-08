@@ -5,6 +5,7 @@ from pathlib import Path
 import edge_tts
 from playsound import playsound
 
+from api.sarvam_services import synthesize_sarvam_speech
 from app.config import settings
 
 
@@ -19,6 +20,14 @@ class EdgeSpeaker:
 
     def synthesize(self, text: str, language: str = "en") -> Path:
         safe_time = int(time.time() * 1000)
+        if settings.tts_provider in {"sarvam", "auto"} and settings.sarvam_api_key:
+            output_path = self.output_dir / f"jx_jarvis_{safe_time}.wav"
+            try:
+                return synthesize_sarvam_speech(text, language, output_path)
+            except Exception:
+                if settings.tts_provider == "sarvam":
+                    raise
+
         output_path = self.output_dir / f"jx_jarvis_{safe_time}.mp3"
         voice = settings.malayalam_voice_name if language == "ml" else self.voice
         try:

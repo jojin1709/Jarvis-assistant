@@ -83,6 +83,11 @@ def open_website(url: str, label: str) -> str:
     return f"{label} opened."
 
 
+def open_protocol(protocol: str, label: str) -> str:
+    _run_detached(["explorer.exe", protocol])
+    return f"{label} opened."
+
+
 def _first_existing(paths: list[Path]) -> Path | None:
     for path in paths:
         if path.exists():
@@ -123,6 +128,20 @@ def _open_app(exe_names: list[str], fallback_url: str | None, label: str) -> str
     return f"{label} was not found."
 
 
+def _open_program(exe_names: list[str], label: str, fallback_url: str | None = None) -> str:
+    for exe in exe_names:
+        resolved = shutil.which(exe)
+        if resolved:
+            _run_detached([resolved])
+            return f"{label} opened."
+
+    if fallback_url:
+        webbrowser.open(fallback_url)
+        return f"{label} opened in the browser."
+
+    return f"{label} was not found."
+
+
 def open_chrome() -> str:
     return _open_app(["chrome.exe", "chrome"], "https://www.google.com", "Chrome")
 
@@ -139,6 +158,77 @@ def open_screen_snip() -> str:
 def search_youtube(query: str) -> str:
     webbrowser.open(f"https://www.youtube.com/results?search_query={quote_plus(query)}")
     return f"Searching YouTube for {query}."
+
+
+WEBSITE_TARGETS = {
+    "amazon": ("https://www.amazon.in", "Amazon"),
+    "amazon india": ("https://www.amazon.in", "Amazon"),
+    "chatgpt": ("https://chatgpt.com", "ChatGPT"),
+    "discord": ("https://discord.com/app", "Discord"),
+    "facebook": ("https://www.facebook.com", "Facebook"),
+    "flipkart": ("https://www.flipkart.com", "Flipkart"),
+    "google drive": ("https://drive.google.com", "Google Drive"),
+    "google docs": ("https://docs.google.com", "Google Docs"),
+    "gmail": ("https://mail.google.com", "Gmail"),
+    "github": ("https://github.com", "GitHub"),
+    "instagram": ("https://www.instagram.com", "Instagram"),
+    "linkedin": ("https://www.linkedin.com", "LinkedIn"),
+    "netflix": ("https://www.netflix.com", "Netflix"),
+    "sarvam": ("https://dashboard.sarvam.ai", "Sarvam dashboard"),
+    "sarvam dashboard": ("https://dashboard.sarvam.ai", "Sarvam dashboard"),
+    "sarvam ai": ("https://dashboard.sarvam.ai", "Sarvam dashboard"),
+    "whatsapp": ("https://web.whatsapp.com", "WhatsApp"),
+    "x": ("https://x.com", "X"),
+    "twitter": ("https://x.com", "X"),
+    "youtube": ("https://www.youtube.com", "YouTube"),
+}
+
+
+def _open_common_target(target: str) -> str | None:
+    normalized = " ".join(target.lower().strip().split())
+    normalized = normalized.removeprefix("the ").strip()
+    normalized = normalized.replace("visual studio code", "vs code")
+
+    if normalized in WEBSITE_TARGETS:
+        url, label = WEBSITE_TARGETS[normalized]
+        return open_website(url, label)
+
+    if normalized in {"settings", "windows settings"}:
+        return open_protocol("ms-settings:", "Settings")
+    if normalized in {"camera", "windows camera"}:
+        return open_protocol("microsoft.windows.camera:", "Camera")
+    if normalized in {"task manager", "taskmanager"}:
+        return _open_program(["taskmgr.exe"], "Task Manager")
+    if normalized in {"paint", "ms paint"}:
+        return _open_program(["mspaint.exe"], "Paint")
+    if normalized in {"terminal", "windows terminal"}:
+        return _open_program(["wt.exe"], "Windows Terminal", fallback_url=None)
+    if normalized in {"command prompt", "cmd"}:
+        return _open_program(["cmd.exe"], "Command Prompt")
+    if normalized in {"powershell", "power shell"}:
+        return _open_program(["powershell.exe"], "PowerShell")
+    if normalized in {"spotify"}:
+        return _open_program(["spotify.exe"], "Spotify", fallback_url="https://open.spotify.com")
+
+    if re.fullmatch(r"(https?://)?[a-z0-9-]+(\.[a-z0-9-]+)+(/[^\s]*)?", normalized):
+        url = normalized if normalized.startswith(("http://", "https://")) else f"https://{normalized}"
+        return open_website(url, normalized)
+
+    return None
+
+
+def run_open_target_action(text: str) -> str | None:
+    open_match = re.search(r"\b(?:open|launch|start)\s+(.+)$", text, re.IGNORECASE)
+    if not open_match:
+        return None
+
+    target = open_match.group(1).strip(" .")
+    if re.match(r"^(?:file|folder)\b", target, re.IGNORECASE):
+        return None
+    if " latest code" in f" {target.lower()}":
+        return None
+
+    return _open_common_target(target)
 
 
 def play_music() -> str:
@@ -210,6 +300,7 @@ COMMAND_ALIASES = {
     "open github": "open_github",
     "launch github": "open_github",
     "open whatsapp": "open_whatsapp",
+    "open web whatsapp": "open_whatsapp",
     "launch whatsapp": "open_whatsapp",
     "open chrome": "open_chrome",
     "launch chrome": "open_chrome",

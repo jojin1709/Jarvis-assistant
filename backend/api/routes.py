@@ -1,9 +1,9 @@
 from flask import Blueprint, jsonify, request
 
+from api.ai_provider import ask_ai, ask_ai_code_project, provider_label
 from api.approvals import resolve_approval
 from api.code_writer import create_code_project, create_portfolio_project, extract_code_request, is_portfolio_request
 from api.file_ingest import save_and_analyze
-from api.groq_ai import ask_groq, ask_groq_code_project
 from api.language import (
     command_language_instruction,
     detect_language,
@@ -20,6 +20,7 @@ from api.system_tasks import (
     extract_youtube_search,
     match_system_command,
     open_google_search,
+    run_open_target_action,
     run_system_task,
     run_local_file_action,
     search_user_files,
@@ -67,7 +68,8 @@ def startup_greeting() -> str:
 
     return (
         f"{period}, {user_display_name(settings.owner_name)}. JX JARVIS is online. "
-        "Voice systems, Malayalam and English input, file intake, Groq intelligence, and desktop operations are ready."
+        f"Voice systems, Malayalam and English input, file intake, {provider_label()} intelligence, "
+        "and desktop operations are ready."
     )
 
 
@@ -138,7 +140,7 @@ def run_text_command(
         if is_portfolio_request(code_request):
             response = create_portfolio_project(code_request)
         else:
-            model_response = ask_groq_code_project(code_request)
+            model_response = ask_ai_code_project(code_request)
             response = create_code_project(code_request, model_response)
         return finish_response(response, language, speak_response, speak_limit=450)
 
@@ -159,6 +161,11 @@ def run_text_command(
         set_state("executing", "Running local file action.")
         return finish_response(local_file_response, language, speak_response, speak_limit=450)
 
+    open_target_response = run_open_target_action(command_text)
+    if open_target_response:
+        set_state("executing", "Opening requested target.")
+        return finish_response(open_target_response, language, speak_response, speak_limit=240)
+
     file_query = extract_file_search(command_text)
     if file_query:
         set_state("executing", f"Searching user files for: {file_query}.")
@@ -171,7 +178,7 @@ def run_text_command(
         response = run_system_task(task_id)
         return finish_response(response, language, speak_response)
 
-    set_state("thinking", "Processing command through Groq neural core.")
+    set_state("thinking", f"Processing command through {provider_label()} neural core.")
     memories = memory_context()
     user_name = user_display_name(settings.owner_name)
     profile_line = f"Current user name: {user_name}"
@@ -180,7 +187,7 @@ def run_text_command(
         if not memories
         else f"{profile_line}\nSaved local memories about the current user:\n{memories}\n\nUser command:\n{text}"
     )
-    response = ask_groq(prompt, language_instruction=command_language_instruction(language))
+    response = ask_ai(prompt, language_instruction=command_language_instruction(language))
     return finish_response(response, language, speak_response, speak_limit=speak_limit)
 
 

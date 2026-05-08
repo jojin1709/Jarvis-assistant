@@ -4,50 +4,44 @@ const actions = [
   { type: "task", id: "open_youtube", label: "YouTube", icon: Youtube },
   { type: "task", id: "open_explorer", label: "Files", icon: FolderOpen },
   { type: "task", id: "open_vscode", label: "Code", icon: Code2 },
-  { type: "task", id: "open_calculator", label: "Calc", icon: Calculator },
+  { type: "task", id: "open_calculator", label: "Calculator", icon: Calculator },
   { type: "task", id: "play_music", label: "Music", icon: Music },
   { type: "task", id: "current_time", label: "Time", icon: Clock },
 ];
 
 export default function QuickDock({ disabled, wakeEnabled, onRun, onToggleWake, onUploadClick }) {
   return (
-    <div className="grid grid-cols-4 gap-2 sm:grid-cols-8">
-      <button
-        type="button"
+    <div className="grid gap-2 sm:grid-cols-2 xl:grid-cols-4">
+      <QuickButton
         disabled={disabled}
+        active={wakeEnabled}
         onClick={onToggleWake}
-        className={`quick-action ${wakeEnabled ? "active" : ""}`}
+        icon={Radio}
+        label={wakeEnabled ? "Wake active" : "Wake off"}
         title={wakeEnabled ? "Wake word is armed" : "Wake word is off"}
-      >
-        <Radio size={18} />
-        <span>Wake</span>
-      </button>
-      <button
-        type="button"
-        disabled={disabled}
-        onClick={onUploadClick}
-        className="quick-action"
-        title="Upload file"
-      >
-        <FileUp size={18} />
-        <span>Upload</span>
-      </button>
-      {actions.map(({ id, label, icon: Icon }) => (
-        <button key={id} type="button" disabled={disabled} onClick={() => onRun(id)} className="quick-action" title={label}>
-          <Icon size={18} />
-          <span>{label}</span>
-        </button>
+      />
+      <QuickButton disabled={disabled} onClick={onUploadClick} icon={FileUp} label="Upload file" title="Upload file" />
+      {actions.map(({ id, label, icon }) => (
+        <QuickButton key={id} disabled={disabled} onClick={() => onRun(id)} icon={icon} label={label} title={label} />
       ))}
-      <button
-        type="button"
-        disabled={disabled}
-        onClick={() => onRun("list_desktop")}
-        className="quick-action sm:hidden"
-        title="Scan desktop"
-      >
-        <Search size={18} />
-        <span>Scan</span>
-      </button>
+      <QuickButton disabled={disabled} onClick={() => onRun("list_desktop")} icon={Search} label="Scan desktop" title="Scan desktop" />
     </div>
+  );
+}
+
+function QuickButton({ disabled, active, onClick, icon: Icon, label, title }) {
+  return (
+    <button
+      type="button"
+      disabled={disabled}
+      onClick={onClick}
+      className={`panel-soft flex min-h-12 items-center gap-3 rounded-2xl px-3 text-left transition ${
+        active ? "border-cyanCore/25 bg-cyanCore/[0.07] text-cyanCore" : "text-textSecondary hover:bg-white/[0.055] hover:text-textPrimary"
+      } disabled:cursor-not-allowed disabled:opacity-45`}
+      title={title}
+    >
+      <Icon size={17} />
+      <span className="text-sm font-medium">{label}</span>
+    </button>
   );
 }

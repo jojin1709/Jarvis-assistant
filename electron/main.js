@@ -4,7 +4,7 @@ const path = require("node:path");
 const { spawn } = require("node:child_process");
 const net = require("node:net");
 
-const { createSplashWindow, waitForStartupAudio } = require("./splash");
+const { createSplashWindow, fadeOutSplash, waitForStartupAudio } = require("./splash");
 
 const isPackaged = app.isPackaged;
 const ROOT_DIR = isPackaged ? process.resourcesPath : path.join(__dirname, "..");
@@ -123,7 +123,7 @@ async function createWindow() {
     height: 920,
     minWidth: 1080,
     minHeight: 720,
-    backgroundColor: "#02040a",
+    backgroundColor: "#070B14",
     title: "JX JARVIS",
     icon: ICON_PATH,
     frame: false,
@@ -145,20 +145,19 @@ async function createWindow() {
 
   mainWindow.once("ready-to-show", async () => {
     await startupAudioPromise;
-    setTimeout(() => {
-      if (splashWindow && !splashWindow.isDestroyed()) splashWindow.close();
-      mainWindow.show();
-      let opacity = 0;
-      const fade = setInterval(() => {
-        opacity = Math.min(opacity + 0.08, 1);
-        if (!mainWindow || mainWindow.isDestroyed()) {
-          clearInterval(fade);
-          return;
-        }
-        mainWindow.setOpacity(opacity);
-        if (opacity >= 1) clearInterval(fade);
-      }, 16);
-    }, 250);
+    await fadeOutSplash(splashWindow);
+    if (splashWindow && !splashWindow.isDestroyed()) splashWindow.close();
+    mainWindow.show();
+    let opacity = 0;
+    const fade = setInterval(() => {
+      opacity = Math.min(opacity + 0.08, 1);
+      if (!mainWindow || mainWindow.isDestroyed()) {
+        clearInterval(fade);
+        return;
+      }
+      mainWindow.setOpacity(opacity);
+      if (opacity >= 1) clearInterval(fade);
+    }, 16);
   });
 
   const devUrl = process.env.VITE_DEV_SERVER_URL;

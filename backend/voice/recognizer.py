@@ -1,6 +1,8 @@
 import speech_recognition as sr
 import sounddevice as sd
+import wave
 
+from api.sarvam_services import transcribe_sarvam_audio
 from app.config import settings
 
 
@@ -35,7 +37,23 @@ class VoiceRecognizer:
             dtype="int16",
         )
         sd.wait()
-        audio = sr.AudioData(recording.tobytes(), sample_rate, 2)
+        audio_bytes = recording.tobytes()
+
+        if settings.stt_provider in {"sarvam", "auto"} and settings.sarvam_api_key:
+            audio_path = settings.speech_dir / "jx_jarvis_input.wav"
+            with wave.open(str(audio_path), "wb") as wav_file:
+                wav_file.setnchannels(1)
+                wav_file.setsampwidth(2)
+                wav_file.setframerate(sample_rate)
+                wav_file.writeframes(audio_bytes)
+
+            try:
+                return transcribe_sarvam_audio(audio_path)
+            except Exception as error:
+                if settings.stt_provider == "sarvam":
+                    return f"Sarvam speech recognition error: {error}"
+
+        audio = sr.AudioData(audio_bytes, sample_rate, 2)
 
         if language_mode == "en":
             languages = ("en-IN", "en-US")
