@@ -1,0 +1,26 @@
+<!doctype html>
+<html lang="en">
+  <head><meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" /><title>Workflow System - JX Jarvis Docs</title><meta name="description" content="JX Jarvis task planning, execution logs, workflow recorder, replay, pause, cancel, verification, and memory." /><link rel="icon" href="../assets/favicon.ico" /><link rel="apple-touch-icon" href="../assets/logo.png" /><link rel="stylesheet" href="../styles/site.css" /></head>
+  <body>
+    <header class="site-header"><div class="container nav"><a class="brand" href="../index.html"><span class="brand-mark"><img src="../assets/logo.png" alt="JX Jarvis logo" /></span><span>JX Jarvis Docs</span></a><button class="button mobile-toggle" data-nav-toggle>Menu</button><nav class="nav-links" data-nav-links><a href="../index.html">Home</a><a class="active" href="installation.html">Docs</a><a href="providers.html">Providers</a><a href="developer-guide.html">Developer</a></nav></div></header>
+    <main class="container docs-layout">
+      <aside class="docs-sidebar panel"><nav><a href="installation.html">Installation</a><a href="setup.html">First-time setup</a><a href="voice-system.html">Voice system</a><a href="browser-automation.html">Browser automation</a><a href="providers.html">AI providers</a><a href="memory-system.html">Memory system</a><a href="permissions.html">Permissions</a><a class="active" href="workflow-system.html">Workflow system</a><a href="plugin-system.html">Plugin system</a><a href="developer-guide.html">Developer guide</a></nav></aside>
+      <article class="doc-article">
+        <div class="eyebrow">Automation</div><h1>Workflow system</h1>
+        <p>Jarvis workflows follow a consistent cycle: understand, plan, execute, verify, remember. The UI shows the live thinking timeline and execution logs throughout the run.</p>
+        <h2>Planning</h2>
+        <p>The planner breaks a command into steps with tool hints and risk levels. Users can preview the plan before execution.</p>
+        <h2>Execution engine</h2>
+        <p>Steps are routed to tools such as memory, website generation, code generation, file actions, browser control, app launcher, automation routines, and terminal diagnostics.</p>
+        <h2>Pause, resume, cancel</h2>
+        <p>The execution control system checks state between steps. Pause holds the workflow, resume continues it, and cancel stops it cleanly with a logged message.</p>
+        <h2>Self-healing</h2>
+        <p>If a step returns a failure pattern and the verification layer considers it retryable, Jarvis logs the issue and tries again with the same tool path.</p>
+        <h2>Recorder</h2>
+        <p>The workflow recorder captures real agent and browser actions while active. Stopping the recorder saves a JSON workflow under the local memory folder.</p>
+        <h2>Replay</h2>
+        <p>Replay re-runs recorded agent steps. Browser events are retained as history and can be expanded into deeper replay actions as the operator evolves.</p>
+      <div class="card" style="margin-top:40px"><h3>Created by Jojin John</h3><p>JX Jarvis is created by <a href="https://www.linkedin.com/in/jojin-john-74386b34a" target="_blank" rel="noreferrer">Jojin John</a>.</p></div></article>
+    </main><script src="../scripts/site.js"></script>
+  </body>
+</html>

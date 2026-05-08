@@ -1,0 +1,28 @@
+<!doctype html>
+<html lang="en">
+  <head><meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" /><title>AI Providers - JX Jarvis Docs</title><meta name="description" content="Configure Groq, OpenAI, Claude, Ollama, Gemini, OpenRouter, Whisper, and local llama.cpp models in JX Jarvis." /><link rel="icon" href="../assets/favicon.ico" /><link rel="apple-touch-icon" href="../assets/logo.png" /><link rel="stylesheet" href="../styles/site.css" /></head>
+  <body>
+    <header class="site-header"><div class="container nav"><a class="brand" href="../index.html"><span class="brand-mark"><img src="../assets/logo.png" alt="JX Jarvis logo" /></span><span>JX Jarvis Docs</span></a><button class="button mobile-toggle" data-nav-toggle>Menu</button><nav class="nav-links" data-nav-links><a href="../index.html">Home</a><a class="active" href="installation.html">Docs</a><a href="providers.html">Providers</a><a href="developer-guide.html">Developer</a></nav></div></header>
+    <main class="container docs-layout">
+      <aside class="docs-sidebar panel"><nav><a href="installation.html">Installation</a><a href="setup.html">First-time setup</a><a href="voice-system.html">Voice system</a><a href="browser-automation.html">Browser automation</a><a class="active" href="providers.html">AI providers</a><a href="memory-system.html">Memory system</a><a href="permissions.html">Permissions</a><a href="workflow-system.html">Workflow system</a><a href="plugin-system.html">Plugin system</a><a href="developer-guide.html">Developer guide</a></nav></aside>
+      <article class="doc-article">
+        <div class="eyebrow">Models</div><h1>AI providers</h1>
+        <p>JX Jarvis uses a unified provider layer so the app can switch between cloud AI, local AI, and hybrid failover without duplicating chat logic.</p>
+        <img src="../images/providers.svg" alt="AI provider settings" style="border-radius:24px;border:1px solid var(--line);margin:24px 0" />
+        <h2>Supported providers</h2>
+        <table><tr><th>Provider</th><th>Purpose</th><th>Key</th></tr><tr><td>Groq</td><td>Fast cloud inference.</td><td>GROQ_API_KEY</td></tr><tr><td>OpenAI</td><td>General chat, coding, and vision-capable models.</td><td>OPENAI_API_KEY</td></tr><tr><td>Claude</td><td>Long-form reasoning and writing workflows.</td><td>ANTHROPIC_API_KEY</td></tr><tr><td>Gemini</td><td>Google model support.</td><td>GEMINI_API_KEY</td></tr><tr><td>OpenRouter</td><td>Access many hosted models through one API.</td><td>OPENROUTER_API_KEY</td></tr><tr><td>Ollama</td><td>Offline local chat models.</td><td>No key</td></tr><tr><td>llama.cpp</td><td>OpenAI-compatible local server.</td><td>No key</td></tr><tr><td>Local Whisper</td><td>Offline speech transcription.</td><td>No key</td></tr></table>
+        <h2>Key management</h2>
+        <p>Keys entered from Settings -&gt; AI Providers are sent to the backend and encrypted locally. The frontend receives only connected status and masked key information. Raw keys are never returned to the browser UI.</p>
+        <h2>Model routing</h2>
+        <p>Jarvis routes different task types independently: chat, coding, vision, voice, and automation. Each route can be set to a specific provider or left on Auto.</p>
+        <h2>Offline and hybrid modes</h2>
+        <p>Offline mode prioritizes Ollama and llama.cpp. Hybrid failover allows Jarvis to try local models when a cloud provider fails, or fall back to another configured cloud provider.</p>
+        <h2>Testing providers</h2>
+        <p>The Test Connection button sends a minimal request and reports success, latency, or the real provider error. Local Whisper reports missing dependencies instead of pretending transcription is ready.</p>
+        <h2>Ollama setup</h2>
+        <div class="code-block"><button class="copy-button" data-copy="#ollama">Copy</button><pre id="ollama"><code>ollama pull llama3.1
+ollama serve</code></pre></div>
+      <div class="card" style="margin-top:40px"><h3>Created by Jojin John</h3><p>JX Jarvis is created by <a href="https://www.linkedin.com/in/jojin-john-74386b34a" target="_blank" rel="noreferrer">Jojin John</a>.</p></div></article>
+    </main><script src="../scripts/site.js"></script>
+  </body>
+</html>
