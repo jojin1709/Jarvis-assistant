@@ -24,19 +24,11 @@ JX Jarvis is built to do real work, not just reply with text.
 
 ## Documentation Website
 
-A complete static documentation and landing site is included in:
+Read the live JX Jarvis documentation here:
 
-```text
-documentation/
-```
+https://jojin1709.github.io/Jarvis-assistant/
 
-Open locally:
-
-```text
-documentation/index.html
-```
-
-The docs include installation, first-time setup, voice, browser automation, AI providers, memory, permissions, workflows, plugin system, and developer guide pages.
+The documentation includes installation, first-time setup, voice, browser automation, AI providers, memory, permissions, workflows, plugin system, and developer guide pages.
 
 ## Core Features
 
@@ -313,6 +305,25 @@ This starts:
 - Vite frontend at `127.0.0.1:5173`
 - Python backend at `127.0.0.1:8765`
 - Electron desktop application
+
+## Updating an Existing Install
+
+If you already cloned JX Jarvis before, use these commands to get the latest
+files from the official repository:
+
+```powershell
+cd Jarvis-assistant
+git pull origin main
+npm install
+npm --prefix frontend install
+backend\.venv\Scripts\python.exe -m pip install -r backend\requirements.txt
+backend\.venv\Scripts\python.exe -m playwright install chromium
+npm run dev
+```
+
+Your private `.env` file is ignored by Git, so updating the repo will not upload
+your API keys. If you edited source files locally, run `git status` before
+pulling so you can save your own changes first.
 
 ## Environment Variables
 
