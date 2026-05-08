@@ -1,0 +1,38 @@
+<!doctype html>
+<html lang="en">
+  <head><meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" /><title>Memory System - JX Jarvis Docs</title><meta name="description" content="JX Jarvis local memory storage, brain folder, SQLite persistence, backups, and privacy controls." /><link rel="icon" href="../assets/favicon.ico" /><link rel="apple-touch-icon" href="../assets/logo.png" /><link rel="stylesheet" href="../styles/site.css" /></head>
+  <body>
+    <header class="site-header"><div class="container nav"><a class="brand" href="../index.html"><span class="brand-mark"><img src="../assets/logo.png" alt="JX Jarvis logo" /></span><span>JX Jarvis Docs</span></a><button class="button mobile-toggle" data-nav-toggle>Menu</button><nav class="nav-links" data-nav-links><a href="../index.html">Home</a><a class="active" href="installation.html">Docs</a><a href="providers.html">Providers</a><a href="developer-guide.html">Developer</a></nav></div></header>
+    <main class="container docs-layout">
+      <aside class="docs-sidebar panel"><nav><a href="installation.html">Installation</a><a href="setup.html">First-time setup</a><a href="voice-system.html">Voice system</a><a href="browser-automation.html">Browser automation</a><a href="providers.html">AI providers</a><a class="active" href="memory-system.html">Memory system</a><a href="permissions.html">Permissions</a><a href="workflow-system.html">Workflow system</a><a href="plugin-system.html">Plugin system</a><a href="developer-guide.html">Developer guide</a></nav></aside>
+      <article class="doc-article">
+        <div class="eyebrow">Local brain</div><h1>Memory system</h1>
+        <p>Jarvis memory is local-first. During onboarding, the user chooses where Jarvis stores its brain data, conversations, workflows, projects, browser history, and backups.</p>
+        <h2>Folder structure</h2>
+        <div class="code-block"><pre><code>JarvisMemory/
+  conversations/
+  workflows/
+  projects/
+  preferences/
+  voice/
+  browser/
+  automation/
+  cache/
+  embeddings/
+  logs/
+  backups/
+  brain.sqlite3</code></pre></div>
+        <h2>What Jarvis remembers</h2>
+        <ul><li>User name and preferences.</li><li>Conversations and useful facts.</li><li>Generated project folders and summaries.</li><li>Workflow recordings and replay metadata.</li><li>Browser automation history.</li><li>Permission and setup choices.</li></ul>
+        <h2>Persistence</h2>
+        <p>The memory database is SQLite. JSON records are also written into category folders for easy inspection, backup, and future import/export tools.</p>
+        <h2>Backups</h2>
+        <p>Settings -&gt; Memory &amp; Brain Storage can create zip backups of the memory folder. Backups are stored under `backups/` inside the selected brain folder.</p>
+        <h2>Privacy</h2>
+        <p>Memory is never uploaded by default. Exporting memory is permission-gated. Disabling memory prevents new memory writes and memory recall in prompts.</p>
+        <h2>Changing memory location</h2>
+        <p>Users can change the memory folder from Settings. Jarvis initializes the required structure and updates the profile to point at the new location.</p>
+      <div class="card" style="margin-top:40px"><h3>Created by Jojin John</h3><p>JX Jarvis is created by <a href="https://www.linkedin.com/in/jojin-john-74386b34a" target="_blank" rel="noreferrer">Jojin John</a>.</p></div></article>
+    </main><script src="../scripts/site.js"></script>
+  </body>
+</html>
