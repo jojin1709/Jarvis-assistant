@@ -47,12 +47,17 @@ cd ..</code></pre></div>
         <div class="code-block"><button class="copy-button" data-copy="#env">Copy</button><pre id="env"><code>copy .env.example .env</code></pre></div>
         <p>Never commit `.env` or runtime files. The repository `.gitignore` excludes secrets and generated memory by default.</p>
 
+        <h2>Install Desktop shortcut</h2>
+        <p>Create a Windows Desktop shortcut that launches Jarvis with one double-click. On first launch, the shortcut launcher installs missing dependencies, prepares the Python backend, and opens the desktop app.</p>
+        <div class="code-block"><button class="copy-button" data-copy="#desktop-shortcut">Copy</button><pre id="desktop-shortcut"><code>npm run install:desktop</code></pre></div>
+        <p>The shortcut is named `Start JX JARVIS` and is added to the current user's Desktop.</p>
+
         <h2>Run in development</h2>
         <div class="code-block"><button class="copy-button" data-copy="#run">Copy</button><pre id="run"><code>npm run dev</code></pre></div>
         <p>This starts the Vite frontend, launches Electron, and starts the Python backend. The splash screen appears first, then onboarding or the main UI.</p>
 
         <h2>Build and package</h2>
-        <table><tr><th>Command</th><th>Purpose</th></tr><tr><td>`npm run build`</td><td>Builds the frontend.</td></tr><tr><td>`npm run pack`</td><td>Creates an unpacked Electron build.</td></tr><tr><td>`npm run dist`</td><td>Creates the Windows installer.</td></tr></table>
+        <table><tr><th>Command</th><th>Purpose</th></tr><tr><td>`npm run install:desktop`</td><td>Adds the one-click Desktop launcher.</td></tr><tr><td>`npm run build`</td><td>Builds the frontend.</td></tr><tr><td>`npm run pack`</td><td>Creates an unpacked Electron build.</td></tr><tr><td>`npm run dist`</td><td>Creates the Windows installer with Desktop and Start Menu shortcuts.</td></tr></table>
       <div class="card" style="margin-top:40px"><h3>Created by Jojin John</h3><p>JX Jarvis is created by <a href="https://www.linkedin.com/in/jojin-john-74386b34a" target="_blank" rel="noreferrer">Jojin John</a>.</p></div></article>
     </main>
     <script src="../scripts/site.js"></script>

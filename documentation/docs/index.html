@@ -147,11 +147,13 @@ python -m venv .venv
 .\.venv\Scripts\python.exe -m pip install -r requirements.txt
 cd ..
 copy .env.example .env
+npm run install:desktop
 npm run dev</code></pre>
           </div>
           <div class="grid stack-grid" style="margin-top:16px">
             <div class="card fade-in"><h3>Prerequisites</h3><p>Windows 10/11, Node.js 20+, Python 3.11+, microphone access, and Chrome/Edge for visual browser automation.</p></div>
             <div class="card fade-in"><h3>Environment</h3><p>Add provider keys in `.env` or through Settings -> AI Providers. Never commit secrets.</p></div>
+            <div class="card fade-in"><h3>Desktop shortcut</h3><p>`npm run install:desktop` adds Start JX JARVIS to the current user's Desktop for one-click launching.</p></div>
             <div class="card fade-in"><h3>Browser</h3><p>Install Playwright browsers with `python -m playwright install chromium` if Chromium is missing.</p></div>
             <div class="card fade-in"><h3>Local AI</h3><p>Run Ollama locally and pull a model such as `llama3.1` for offline mode.</p></div>
           </div>

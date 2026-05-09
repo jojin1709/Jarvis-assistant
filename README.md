@@ -294,6 +294,17 @@ Copy-Item .env.example .env
 
 Open `.env` and add your provider keys. Do not commit `.env`.
 
+Install the Desktop shortcut:
+
+```powershell
+npm run install:desktop
+```
+
+This creates `Start JX JARVIS` on your Windows Desktop. Double-click it any
+time to start Jarvis. On first launch, the shortcut launcher installs missing
+Node/frontend dependencies, prepares the Python backend, and opens the desktop
+app.
+
 Run Jarvis:
 
 ```powershell
@@ -417,6 +428,9 @@ Create Windows installer:
 ```powershell
 npm run dist
 ```
+
+The installer created by `npm run dist` also creates a Desktop shortcut and
+Start Menu shortcut through Electron Builder.
 
 ## Privacy and Security
 
