@@ -14,7 +14,14 @@ async function request(path, options = {}) {
 
   if (!response.ok) {
     const text = await response.text();
-    throw new Error(text || `Request failed with status ${response.status}`);
+    let message = text;
+    try {
+      const data = JSON.parse(text);
+      message = data.error || data.message || text;
+    } catch {
+      message = text;
+    }
+    throw new Error(message || `Request failed with status ${response.status}`);
   }
 
   return response.json();
@@ -230,6 +237,13 @@ export function exportMemory() {
 
 export function getSystemApps() {
   return request("/api/system/apps");
+}
+
+export function scanSystemAppsFolder(path) {
+  return request("/api/system/apps/scan-folder", {
+    method: "POST",
+    body: JSON.stringify({ path }),
+  });
 }
 
 export function getPermissions() {

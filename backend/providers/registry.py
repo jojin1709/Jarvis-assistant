@@ -110,7 +110,11 @@ def resolve_provider(task_type: str = "chat") -> str:
         candidates.append(route)
     if active != "auto":
         candidates.append(active)
-    candidates.extend(["ollama", "local_llamacpp"] if offline else ["openai", "claude", "groq", "gemini", "openrouter", "ollama", "local_llamacpp"])
+    candidates.extend(
+        ["ollama", "local_llamacpp"]
+        if offline
+        else ["openai", "claude", "groq", "gemini", "openrouter", "deepseek", "nvidia", "sarvam", "ollama", "local_llamacpp"]
+    )
     for provider in candidates:
         if _provider_ready(provider, task_type, config):
             return provider
@@ -175,9 +179,13 @@ def _provider_ready(provider: str, task_type: str, config: dict) -> bool:
     spec = PROVIDERS.get(provider)
     if not spec or not config["enabled"].get(provider, False):
         return False
+    if task_type in {"chat", "automation"} and not spec.supports_chat:
+        return False
     if task_type == "coding" and not spec.supports_code:
         return False
     if task_type == "vision" and not spec.supports_vision and provider not in {"ollama", "local_llamacpp"}:
+        return False
+    if task_type == "voice" and not spec.supports_voice:
         return False
     return not spec.requires_key or has_secret(provider) or bool(provider_key(provider))
 

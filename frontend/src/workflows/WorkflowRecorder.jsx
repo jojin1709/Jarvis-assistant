@@ -4,12 +4,18 @@ import { useState } from "react";
 export default function WorkflowRecorder({ runtime }) {
   const [name, setName] = useState("My Jarvis workflow");
   const recorder = runtime.workflowRecorder || { active: false, workflows: [] };
+  const currentActionCount = recorder.current?.actions?.length || 0;
 
   return (
     <section className="panel rounded-[28px] p-5">
       <div className="mb-4 flex items-center gap-2">
         <Radio size={17} className="text-cyanCore" />
         <h3 className="text-base font-semibold text-textPrimary">Workflow recorder</h3>
+        {recorder.active ? (
+          <span className="ml-auto rounded-full border border-cyanCore/25 bg-cyanCore/10 px-2 py-1 text-[11px] font-semibold text-cyanCore">
+            Recording
+          </span>
+        ) : null}
       </div>
 
       <div className="rounded-2xl border border-line bg-white/[0.025] p-3">
@@ -40,6 +46,15 @@ export default function WorkflowRecorder({ runtime }) {
             Stop
           </button>
         </div>
+        {recorder.active ? (
+          <p className="mt-3 rounded-xl border border-line bg-[#070B14]/45 px-3 py-2 text-xs text-textSecondary">
+            {currentActionCount} action(s) captured
+          </p>
+        ) : recorder.lastSaved ? (
+          <p className="mt-3 rounded-xl border border-line bg-[#070B14]/45 px-3 py-2 text-xs text-textSecondary">
+            Last saved: {recorder.lastSaved.actionCount || 0} action(s)
+          </p>
+        ) : null}
       </div>
 
       <div className="mt-4 space-y-2">
@@ -47,8 +62,9 @@ export default function WorkflowRecorder({ runtime }) {
           <button
             key={workflow.id}
             type="button"
+            disabled={!workflow.actionCount || runtime.busy}
             onClick={() => runtime.replayWorkflowFlow(workflow.id)}
-            className="flex w-full items-center justify-between rounded-2xl border border-line bg-white/[0.025] p-3 text-left text-sm transition hover:border-cyanCore/40"
+            className="flex w-full items-center justify-between rounded-2xl border border-line bg-white/[0.025] p-3 text-left text-sm transition hover:border-cyanCore/40 disabled:cursor-not-allowed disabled:opacity-40"
           >
             <span>
               <span className="block font-medium text-textPrimary">{workflow.name}</span>
@@ -57,6 +73,9 @@ export default function WorkflowRecorder({ runtime }) {
             <RotateCcw size={15} className="text-textSecondary" />
           </button>
         ))}
+        {!(recorder.workflows || []).length ? (
+          <p className="rounded-2xl border border-line bg-white/[0.025] p-3 text-sm text-textSecondary">No recorded workflows yet.</p>
+        ) : null}
       </div>
     </section>
   );

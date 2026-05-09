@@ -8,18 +8,21 @@ export default function FileIntake({ disabled, onUpload }) {
   const [dragging, setDragging] = useState(false);
 
   function pickFile() {
+    if (disabled) return;
     inputRef.current?.click();
   }
 
   function handleFiles(files) {
+    if (disabled) return;
     const file = files?.[0];
     if (file) onUpload(file);
   }
 
   return (
     <section
-      className={`panel group relative overflow-hidden rounded-[28px] p-4 ${dragging ? "border-cyanCore/30 bg-cyanCore/10" : ""}`}
+      className={`panel group relative overflow-hidden rounded-[24px] p-4 ${dragging ? "border-cyanCore/30 bg-cyanCore/10" : ""}`}
       onDragOver={(event) => {
+        if (disabled) return;
         event.preventDefault();
         setDragging(true);
       }}
@@ -49,13 +52,13 @@ export default function FileIntake({ disabled, onUpload }) {
         type="button"
         disabled={disabled}
         onClick={pickFile}
-        className="mt-4 flex h-12 w-full items-center justify-center gap-2 rounded-2xl border border-cyanCore/20 bg-cyanCore/10 text-sm font-semibold text-cyanCore transition hover:bg-cyanCore/15 disabled:opacity-40"
+        className="mt-3 flex h-10 w-full items-center justify-center gap-2 rounded-2xl border border-cyanCore/20 bg-cyanCore/10 text-sm font-semibold text-cyanCore transition hover:bg-cyanCore/15 disabled:opacity-40"
       >
         {disabled ? <Loader2 className="animate-spin" size={18} /> : <FileUp size={18} />}
         Upload
       </button>
 
-      <div className="mt-4 grid grid-cols-3 gap-2">
+      <div className="mt-3 grid grid-cols-3 gap-2">
         {mediaTypes.map((type) => (
           <span key={type} className="rounded-xl border border-line bg-white/[0.03] px-2 py-1 text-center text-xs text-textSecondary">
             {type}

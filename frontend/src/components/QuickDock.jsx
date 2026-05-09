@@ -11,7 +11,7 @@ const actions = [
 
 export default function QuickDock({ disabled, wakeEnabled, onRun, onToggleWake, onUploadClick }) {
   return (
-    <div className="grid gap-2 sm:grid-cols-2 xl:grid-cols-4">
+    <div className="grid gap-2 sm:grid-cols-3 xl:grid-cols-5">
       <QuickButton
         disabled={disabled}
         active={wakeEnabled}
@@ -35,12 +35,12 @@ function QuickButton({ disabled, active, onClick, icon: Icon, label, title }) {
       type="button"
       disabled={disabled}
       onClick={onClick}
-      className={`panel-soft flex min-h-12 items-center gap-3 rounded-2xl px-3 text-left transition ${
+      className={`panel-soft flex min-h-10 items-center gap-2 rounded-2xl px-3 text-left transition ${
         active ? "border-cyanCore/25 bg-cyanCore/[0.07] text-cyanCore" : "text-textSecondary hover:bg-white/[0.055] hover:text-textPrimary"
       } disabled:cursor-not-allowed disabled:opacity-45`}
       title={title}
     >
-      <Icon size={17} />
+      <Icon size={16} />
       <span className="text-sm font-medium">{label}</span>
     </button>
   );

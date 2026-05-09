@@ -86,7 +86,7 @@ export default function OnboardingPage({ onComplete }) {
           terminalExecution: setup.permissions.terminalExecution,
           voiceActivation: setup.voiceActivation,
           backgroundListening: setup.voiceActivation,
-          automationMode: false,
+          automationMode: true,
           internetAccess: setup.permissions.browserControl,
         },
         protectedFolders: setup.protectedFolders,

@@ -1,6 +1,6 @@
-import { NavLink, Outlet } from "react-router-dom";
-import { Bell, Bot, Files, Home, MessageCircle, Mic2, MonitorUp, Settings, Sparkles, Workflow } from "lucide-react";
-import { useEffect, useState } from "react";
+import { NavLink, Outlet, useLocation } from "react-router-dom";
+import { AppWindow, Bell, Bot, Files, Home, MessageCircle, Mic2, MonitorUp, Settings, Sparkles, Workflow } from "lucide-react";
+import { useEffect, useRef, useState } from "react";
 
 import CommandConsole from "../components/CommandConsole.jsx";
 import CommandPalette from "../components/CommandPalette.jsx";
@@ -16,6 +16,7 @@ const navigation = [
   { label: "Chat", path: "/chat", icon: MessageCircle },
   { label: "Voice", path: "/voice", icon: Mic2 },
   { label: "Files", path: "/files", icon: Files },
+  { label: "Apps", path: "/apps", icon: AppWindow },
   { label: "Automation", path: "/automation", icon: Workflow },
   { label: "Browser", path: "/browser", icon: MonitorUp },
   { label: "Settings", path: "/settings", icon: Settings },
@@ -23,6 +24,8 @@ const navigation = [
 
 export default function AppShell() {
   const runtime = useJarvisRuntime();
+  const location = useLocation();
+  const contentRef = useRef(null);
   const [now, setNow] = useState(new Date());
   const [overlayOpen, setOverlayOpen] = useState(false);
 
@@ -54,20 +57,24 @@ export default function AppShell() {
     });
   }, [runtime.setCommandPaletteOpen]);
 
+  useEffect(() => {
+    contentRef.current?.scrollTo({ top: 0, left: 0 });
+  }, [location.pathname]);
+
   return (
-    <main className="relative min-h-screen overflow-hidden bg-void text-textPrimary">
+    <main className="relative h-screen overflow-hidden bg-void text-textPrimary">
       <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_50%_0%,rgba(0,229,255,.08),transparent_30%)]" />
-      <div className="relative z-10 flex min-h-screen flex-col">
+      <div className="relative z-10 flex h-full min-h-0 flex-col">
         <WindowTitleBar />
 
-        <div className="mx-auto flex w-full max-w-[1600px] flex-1 gap-4 p-4">
+        <div className="flex min-h-0 w-full flex-1 gap-3 p-3">
           <Sidebar userName={runtime.userName} />
 
-          <div className="flex min-w-0 flex-1 flex-col gap-4">
-            <header className="app-surface flex flex-wrap items-center justify-between gap-3 rounded-[28px] px-5 py-4">
+          <div className="flex min-h-0 min-w-0 flex-1 flex-col gap-3">
+            <header className="app-surface shrink-0 flex flex-wrap items-center justify-between gap-3 rounded-[24px] px-5 py-3">
               <div>
                 <p className="text-sm text-textSecondary">Personal AI Workspace</p>
-                <h1 className="mt-1 text-2xl font-semibold tracking-[-0.03em] text-textPrimary">Command Center</h1>
+                <h1 className="text-2xl font-semibold tracking-[-0.03em] text-textPrimary">Command Center</h1>
               </div>
               <div className="flex flex-wrap items-center gap-2">
                 <button
@@ -82,11 +89,13 @@ export default function AppShell() {
               </div>
             </header>
 
-            <div className="min-h-0 flex-1">
+            <div ref={contentRef} className="min-h-0 flex-1 overflow-y-auto overflow-x-hidden pr-1">
               <Outlet context={runtime} />
             </div>
 
-            <CommandConsole onSend={runtime.runTextFlow} disabled={!runtime.backendOnline || runtime.busy} />
+            <div className="shrink-0">
+              <CommandConsole onSend={runtime.runTextFlow} disabled={!runtime.backendOnline || runtime.busy} />
+            </div>
           </div>
         </div>
       </div>
@@ -95,6 +104,7 @@ export default function AppShell() {
         open={runtime.commandPaletteOpen}
         onClose={() => runtime.setCommandPaletteOpen(false)}
         onRun={runtime.runTextFlow}
+        disabled={!runtime.backendOnline || runtime.busy}
       />
       <AssistantOverlay open={overlayOpen} onClose={() => setOverlayOpen(false)} runtime={runtime} />
     </main>
@@ -103,7 +113,7 @@ export default function AppShell() {
 
 function Sidebar({ userName }) {
   return (
-    <aside className="app-surface hidden w-64 shrink-0 flex-col rounded-[28px] p-4 lg:flex">
+    <aside className="app-surface hidden min-h-0 w-60 shrink-0 flex-col overflow-y-auto rounded-[24px] p-3 lg:flex">
       <div className="flex items-center gap-3 px-2 py-2">
         <LogoMark className="h-10 w-10" rounded="rounded-2xl" />
         <div>
@@ -112,14 +122,14 @@ function Sidebar({ userName }) {
         </div>
       </div>
 
-      <nav className="mt-6 space-y-1">
+      <nav className="mt-5 space-y-1">
         {navigation.map(({ label, path, icon: Icon }) => (
           <NavLink
             key={path}
             to={path}
             end={path === "/"}
             className={({ isActive }) =>
-              `flex h-11 w-full items-center gap-3 rounded-2xl px-3 text-sm font-medium transition ${
+              `flex h-10 w-full items-center gap-3 rounded-2xl px-3 text-sm font-medium transition ${
                 isActive ? "bg-white/[0.075] text-textPrimary" : "text-textSecondary hover:bg-white/[0.045] hover:text-textPrimary"
               }`
             }
@@ -130,8 +140,8 @@ function Sidebar({ userName }) {
         ))}
       </nav>
 
-      <div className="mt-auto space-y-3">
-        <div className="rounded-3xl border border-line bg-white/[0.035] p-4">
+      <div className="mt-auto space-y-2">
+        <div className="rounded-2xl border border-line bg-white/[0.035] p-3">
           <div className="mb-3 flex items-center gap-2 text-sm font-medium text-textPrimary">
             <Sparkles size={16} className="text-cyanCore" />
             Workspace profile
@@ -139,18 +149,23 @@ function Sidebar({ userName }) {
           <p className="text-sm text-textSecondary">Signed in locally as</p>
           <p className="mt-1 truncate font-medium text-textPrimary">{userName}</p>
         </div>
-        <div className="rounded-3xl border border-line bg-white/[0.035] p-4">
+        <div className="rounded-2xl border border-line bg-white/[0.035] p-3">
           <div className="flex items-center gap-2 text-sm text-textSecondary">
             <Bell size={16} />
             Notifications stay local
           </div>
         </div>
-        <div className="rounded-3xl border border-line bg-white/[0.035] p-4">
+        <div className="rounded-2xl border border-line bg-white/[0.035] p-3">
           <p className="text-xs uppercase tracking-[0.18em] text-textSecondary">Created by</p>
           <a
             href="https://www.linkedin.com/in/jojin-john-74386b34a"
             target="_blank"
             rel="noreferrer"
+            onClick={(event) => {
+              if (!window.jxJarvis?.openExternal) return;
+              event.preventDefault();
+              window.jxJarvis.openExternal("https://www.linkedin.com/in/jojin-john-74386b34a");
+            }}
             className="mt-1 block truncate text-sm font-medium text-textPrimary transition hover:text-cyanCore"
           >
             Jojin John

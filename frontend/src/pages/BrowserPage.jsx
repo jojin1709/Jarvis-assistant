@@ -31,12 +31,12 @@ export default function BrowserPage() {
   }, [browser.domSummary]);
 
   return (
-    <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_380px]">
-      <section className="panel overflow-hidden rounded-[28px]">
-        <div className="border-b border-line p-5">
-          <div className="flex flex-wrap items-start justify-between gap-4">
+    <div className="grid min-h-full gap-3 xl:grid-cols-[minmax(0,1fr)_360px]">
+      <section className="panel flex min-h-0 flex-col overflow-hidden rounded-[24px]">
+        <div className="shrink-0 border-b border-line p-4">
+          <div className="flex flex-wrap items-start justify-between gap-3">
             <div>
-              <h2 className="text-2xl font-semibold tracking-[-0.03em] text-textPrimary">Visual Browser Operator</h2>
+              <h2 className="text-xl font-semibold tracking-[-0.03em] text-textPrimary">Visual Browser Operator</h2>
               <p className="mt-1 text-sm text-textSecondary">Jarvis can open a visible browser, inspect the DOM, type, click, scroll, and verify page state.</p>
             </div>
             <span className={`rounded-full border px-3 py-1.5 text-xs font-semibold capitalize ${running ? "border-cyanCore/40 text-cyanCore" : paused ? "border-amber-300/30 text-amber-200" : "border-line text-textSecondary"}`}>
@@ -45,20 +45,20 @@ export default function BrowserPage() {
           </div>
 
           <form
-            className="mt-5 flex items-center gap-3 rounded-[24px] border border-line bg-white/[0.035] p-2.5"
+            className="mt-3 flex items-center gap-2 rounded-[20px] border border-line bg-white/[0.035] p-2"
             onSubmit={(event) => {
               event.preventDefault();
-              if (task.trim()) runtime.runBrowserFlow(task.trim());
+              if (runtime.backendOnline && task.trim() && !running) runtime.runBrowserFlow(task.trim());
             }}
           >
             <Bot size={19} className="ml-2 text-cyanCore" />
             <input
               value={task}
               onChange={(event) => setTask(event.target.value)}
-              className="min-w-0 flex-1 bg-transparent px-2 py-3 text-textPrimary outline-none placeholder:text-textSecondary"
+              className="min-w-0 flex-1 bg-transparent px-2 py-2 text-sm text-textPrimary outline-none placeholder:text-textSecondary"
               placeholder="Ask Jarvis to browse, search, click, scroll, or summarize..."
             />
-            <button disabled={!runtime.backendOnline || !task.trim() || running} className="grid h-11 w-11 place-items-center rounded-2xl bg-cyanCore text-[#021018] disabled:opacity-45" type="submit">
+            <button disabled={!runtime.backendOnline || !task.trim() || running} className="grid h-10 w-10 place-items-center rounded-2xl bg-cyanCore text-[#021018] disabled:opacity-45" type="submit">
               <Search size={18} />
             </button>
           </form>
@@ -70,7 +70,7 @@ export default function BrowserPage() {
             <ControlButton icon={Power} label="Close browser" disabled={running} onClick={runtime.closeBrowserFlow} />
             <button
               type="button"
-              onClick={() => runtime.runBrowserFlow(task)}
+              onClick={() => runtime.runBrowserFlow(task.trim())}
               disabled={!runtime.backendOnline || running || !task.trim()}
               className="inline-flex h-10 items-center gap-2 rounded-2xl border border-line px-3 text-sm text-textSecondary transition hover:text-textPrimary disabled:opacity-40"
             >
@@ -80,8 +80,8 @@ export default function BrowserPage() {
           </div>
         </div>
 
-        <div className="grid gap-0 2xl:grid-cols-[minmax(0,1fr)_320px]">
-          <div className="min-h-[520px] bg-[#02050b] p-4">
+        <div className="grid min-h-0 flex-1 gap-0 2xl:grid-cols-[minmax(0,1fr)_300px]">
+          <div className="flex min-h-0 flex-col bg-[#02050b] p-3">
             <div className="mb-3 flex items-center justify-between gap-3 rounded-2xl border border-line bg-white/[0.03] px-3 py-2">
               <div className="min-w-0">
                 <p className="truncate text-sm font-medium text-textPrimary">{browser.title || "No page loaded"}</p>
@@ -90,9 +90,9 @@ export default function BrowserPage() {
               <MousePointerClick size={18} className="shrink-0 text-cyanCore" />
             </div>
 
-            <div className="relative grid min-h-[455px] place-items-center overflow-hidden rounded-[22px] border border-line bg-[#050914]">
+            <div className="relative grid min-h-0 flex-1 place-items-center overflow-hidden rounded-[20px] border border-line bg-[#050914]">
               {screenshot ? (
-                <img src={screenshot} alt="Live browser automation preview" className="h-full max-h-[620px] w-full object-contain" />
+                <img src={screenshot} alt="Live browser automation preview" className="h-full max-h-full w-full object-contain" />
               ) : (
                 <div className="max-w-md p-8 text-center">
                   <Globe2 size={34} className="mx-auto text-cyanCore" />
@@ -106,7 +106,7 @@ export default function BrowserPage() {
             </div>
           </div>
 
-          <aside className="border-l border-line p-4">
+          <aside className="min-h-0 overflow-auto border-l border-line p-3">
             <h3 className="mb-3 text-base font-semibold text-textPrimary">DOM Understanding</h3>
             <div className="space-y-3">
               {domItems.map(([label, items, Icon]) => (
@@ -131,10 +131,10 @@ export default function BrowserPage() {
         </div>
       </section>
 
-      <aside className="space-y-4">
-        <section className="panel rounded-[28px] p-5">
-          <h3 className="mb-4 text-base font-semibold text-textPrimary">Quick Visual Tasks</h3>
-          <div className="space-y-2">
+      <aside className="grid gap-3">
+        <section className="panel shrink-0 rounded-[24px] p-4">
+          <h3 className="mb-3 text-base font-semibold text-textPrimary">Quick Visual Tasks</h3>
+          <div className="grid gap-2">
             {quickTasks.map((item) => (
               <button
                 key={item}
@@ -144,7 +144,7 @@ export default function BrowserPage() {
                   setTask(item);
                   runtime.runBrowserFlow(item);
                 }}
-                className="w-full rounded-2xl border border-line bg-white/[0.025] p-3 text-left text-sm text-textSecondary transition hover:text-textPrimary disabled:opacity-45"
+                className="w-full rounded-2xl border border-line bg-white/[0.025] px-3 py-2 text-left text-sm text-textSecondary transition hover:text-textPrimary disabled:opacity-45"
               >
                 {item}
               </button>
@@ -152,9 +152,9 @@ export default function BrowserPage() {
           </div>
         </section>
 
-        <section className="panel rounded-[28px] p-5">
-          <h3 className="mb-4 text-base font-semibold text-textPrimary">Browser Logs</h3>
-          <div className="max-h-[320px] space-y-2 overflow-auto pr-1">
+        <section className="panel flex max-h-96 min-h-0 flex-col rounded-[24px] p-4">
+          <h3 className="mb-3 text-base font-semibold text-textPrimary">Browser Logs</h3>
+          <div className="min-h-0 flex-1 space-y-2 overflow-auto pr-1">
             {(browser.logs || []).length ? (
               browser.logs.map((log) => (
                 <div key={log.id} className="rounded-2xl border border-line bg-white/[0.025] p-3">
@@ -171,9 +171,9 @@ export default function BrowserPage() {
           </div>
         </section>
 
-        <section className="panel rounded-[28px] p-5">
-          <h3 className="mb-4 text-base font-semibold text-textPrimary">Tabs</h3>
-          <div className="space-y-2">
+        <section className="panel max-h-40 shrink-0 overflow-hidden rounded-[24px] p-4">
+          <h3 className="mb-3 text-base font-semibold text-textPrimary">Tabs</h3>
+          <div className="max-h-28 space-y-2 overflow-auto pr-1">
             {(browser.tabs || []).length ? (
               browser.tabs.map((tab) => (
                 <div key={`${tab.index}-${tab.url}`} className="rounded-2xl border border-line bg-white/[0.025] p-3">

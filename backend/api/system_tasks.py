@@ -1,3 +1,4 @@
+import hashlib
 import os
 import platform
 import random
@@ -8,10 +9,15 @@ import time
 import webbrowser
 from datetime import datetime
 from pathlib import Path
-from urllib.parse import quote_plus
+from urllib.parse import quote, quote_plus
+
+try:
+    import winreg
+except ImportError:  # pragma: no cover - non-Windows fallback
+    winreg = None
 
 from api.approvals import request_approval
-from api.permissions import accessible_roots, evaluate_permission, guard_action
+from api.permissions import accessible_roots, app_is_allowed, evaluate_permission, guard_action, permissions_state
 from app.config import settings
 from api.code_writer import open_code_workspace, open_latest_code_project, test_latest_code_project
 
@@ -24,10 +30,23 @@ PICTURES = Path.home() / "Pictures"
 VIDEOS = Path.home() / "Videos"
 SAFE_FILE_ROOTS = [DESKTOP, DOCUMENTS, DOWNLOADS, PICTURES, VIDEOS, MUSIC]
 JARVIS_TRASH = DESKTOP / "JX-JARVIS-Trash"
+RUNTIME_DIR = Path(__file__).resolve().parents[1] / "runtime"
+APP_ICON_DIR = RUNTIME_DIR / "app-icons"
 LOCAL_APP_DATA = Path(os.getenv("LOCALAPPDATA", ""))
 APP_DATA = Path(os.getenv("APPDATA", ""))
 PROGRAM_FILES = Path(os.getenv("ProgramFiles", ""))
 PROGRAM_FILES_X86 = Path(os.getenv("ProgramFiles(x86)", ""))
+PROGRAM_DATA = Path(os.getenv("ProgramData", ""))
+START_MENU_DIRS = [
+    PROGRAM_DATA / "Microsoft" / "Windows" / "Start Menu" / "Programs",
+    APP_DATA / "Microsoft" / "Windows" / "Start Menu" / "Programs",
+]
+PROGRAM_SCAN_DIRS = [PROGRAM_FILES, PROGRAM_FILES_X86, LOCAL_APP_DATA / "Programs"]
+UNINSTALL_REGISTRY_KEYS = [
+    (getattr(winreg, "HKEY_LOCAL_MACHINE", None), r"SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall"),
+    (getattr(winreg, "HKEY_LOCAL_MACHINE", None), r"SOFTWARE\WOW6432Node\Microsoft\Windows\CurrentVersion\Uninstall"),
+    (getattr(winreg, "HKEY_CURRENT_USER", None), r"SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall"),
+]
 
 
 APP_TARGETS = {
@@ -216,7 +235,23 @@ def open_folder(path: Path, label: str) -> str:
 
 def open_website(url: str, label: str) -> str:
     def run() -> str:
-        opened = webbrowser.open(url)
+        chrome = _resolve_app_command(APP_TARGETS["chrome"])
+        if chrome:
+            try:
+                _run_detached([*chrome, "--new-tab", url])
+            except OSError as error:
+                return f"Could not open {label} in Chrome: {error}"
+            return f"{label} opened in your main Chrome."
+
+        edge = _resolve_app_command(APP_TARGETS["edge"])
+        if edge:
+            try:
+                _run_detached([*edge, "--new-tab", url])
+            except OSError as error:
+                return f"Could not open {label} in Edge: {error}"
+            return f"{label} opened in Edge."
+
+        opened = webbrowser.open_new_tab(url)
         return f"{label} opened in the browser." if opened else f"Could not open {label} in the browser."
 
     return guard_action("browser.open", f"open {label}", run)
@@ -257,6 +292,10 @@ def _app_config(target: str) -> dict | None:
     return APP_TARGETS.get(key)
 
 
+def _app_key(value: str) -> str:
+    return re.sub(r"[^a-z0-9]+", " ", value.lower()).strip()
+
+
 def _resolve_app_command(config: dict) -> list[str] | None:
     for command in config.get("commands", []):
         resolved = shutil.which(command)
@@ -277,7 +316,16 @@ def _resolve_app_command(config: dict) -> list[str] | None:
 def open_app_target(target: str) -> str | None:
     config = _app_config(target)
     if not config:
-        return None
+        app = _find_installed_app(target)
+        if not app:
+            return None
+        label = app["label"]
+        return guard_action(
+            "app.open",
+            f"open {label}",
+            lambda: _open_discovered_app(app),
+            app=label,
+        )
 
     command = _resolve_app_command(config)
     label = config["label"]
@@ -294,6 +342,27 @@ def open_app_target(target: str) -> str | None:
         return open_website(fallback_url, label)
 
     return f"{label} was not found on this PC."
+
+
+def _open_shortcut(path: Path, label: str) -> str:
+    try:
+        os.startfile(path)
+    except OSError as error:
+        return f"Could not open {label}: {error}"
+    return f"{label} opened successfully."
+
+
+def _open_executable(path: Path, label: str) -> str:
+    if not path.exists():
+        return f"{label} was not found at {path}."
+    return _launch_and_verify([str(path)], label, [path.name])
+
+
+def _open_discovered_app(app: dict[str, object]) -> str:
+    path = Path(str(app.get("path") or ""))
+    if app.get("kind") == "shortcut":
+        return _open_shortcut(path, str(app.get("label") or path.stem))
+    return _open_executable(path, str(app.get("label") or path.stem))
 
 
 def close_app_target(target: str) -> str | None:
@@ -327,19 +396,359 @@ def close_app_target(target: str) -> str | None:
 
 def list_available_apps() -> list[dict[str, object]]:
     apps = []
+    seen = set()
     for key, config in APP_TARGETS.items():
         command = _resolve_app_command(config)
         processes = config.get("processes", [])
-        apps.append(
-            {
-                "id": key,
-                "label": config["label"],
-                "installed": bool(command),
-                "running": _process_running(processes),
-                "fallback_url": config.get("fallback_url"),
-            }
-        )
+        label = config["label"]
+        seen.add(_app_key(label))
+        icon_source = _mapped_icon_source(config, command)
+        payload = {
+            "id": key,
+            "label": label,
+            "installed": bool(command),
+            "running": _process_running(processes),
+            "fallback_url": config.get("fallback_url"),
+            "allowed": app_is_allowed(label),
+            "source": "mapped",
+        }
+        if icon_source:
+            payload["path"] = str(icon_source)
+            payload["iconUrl"] = _app_icon_url(label, icon_source)
+        apps.append(payload)
+    for app in _discover_installed_apps():
+        label = str(app["label"])
+        key = _app_key(label)
+        if key in seen:
+            continue
+        seen.add(key)
+        apps.append(_app_listing_payload(app))
     return apps
+
+
+def _discover_installed_apps(limit: int = 320) -> list[dict[str, object]]:
+    apps: list[dict[str, object]] = []
+    seen = set()
+    for app in [*_custom_permission_apps(), *_discover_start_menu_apps(), *_discover_registry_apps(), *_discover_program_files_apps()]:
+        key = _app_key(str(app.get("label") or ""))
+        if not key or key in seen:
+            continue
+        seen.add(key)
+        apps.append(app)
+        if len(apps) >= limit:
+            break
+    return sorted(apps, key=lambda item: str(item["label"]).lower())
+
+
+def scan_app_folder(folder_path: str, limit: int = 240) -> list[dict[str, object]]:
+    folder = Path(folder_path).expanduser()
+    if not folder.exists() or not folder.is_dir():
+        return []
+    apps = _discover_folder_apps(folder, limit=limit)
+    return [_app_listing_payload(app) for app in apps]
+
+
+def app_icon_file(label: str, source_path: str) -> Path | None:
+    source = Path(source_path)
+    if not source.exists() or source.suffix.lower() not in {".exe", ".lnk", ".ico"}:
+        return None
+    if source.suffix.lower() == ".ico":
+        return source
+
+    APP_ICON_DIR.mkdir(parents=True, exist_ok=True)
+    digest = hashlib.sha1(f"{label}|{source}".encode("utf-8", errors="ignore")).hexdigest()[:16]
+    target = APP_ICON_DIR / f"{digest}-{_safe_icon_name(label)}.ico"
+    if target.exists() and target.stat().st_size > 0:
+        return target
+    if os.name != "nt":
+        return None
+
+    script_body = r"""
+Add-Type -AssemblyName System.Drawing
+$target = $Source
+try {
+  if ($Source.ToLower().EndsWith(".lnk")) {
+    $shortcut = (New-Object -ComObject WScript.Shell).CreateShortcut($Source)
+    if ($shortcut.IconLocation) {
+      $iconPath = ($shortcut.IconLocation -split ",")[0].Trim('"')
+      if (Test-Path $iconPath) { $target = $iconPath }
+    } elseif ($shortcut.TargetPath -and (Test-Path $shortcut.TargetPath)) {
+      $target = $shortcut.TargetPath
+    }
+  }
+} catch {}
+$icon = [System.Drawing.Icon]::ExtractAssociatedIcon($target)
+if ($icon -ne $null) {
+  $stream = [System.IO.File]::Open($Out, [System.IO.FileMode]::Create)
+  try { $icon.Save($stream) } finally { $stream.Close(); $icon.Dispose() }
+}
+"""
+    script = f"& {{ param([string]$Source, [string]$Out) {script_body} }} -Source {_powershell_quote(str(source))} -Out {_powershell_quote(str(target))}"
+    try:
+        subprocess.run(
+            ["powershell.exe", "-NoProfile", "-ExecutionPolicy", "Bypass", "-Command", script],
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+            timeout=6,
+            creationflags=subprocess.CREATE_NO_WINDOW if os.name == "nt" else 0,
+            check=False,
+        )
+    except (OSError, subprocess.SubprocessError):
+        return None
+    return target if target.exists() and target.stat().st_size > 0 else None
+
+
+def _powershell_quote(value: str) -> str:
+    return "'" + value.replace("'", "''") + "'"
+
+
+def _app_listing_payload(app: dict[str, object]) -> dict[str, object]:
+    label = str(app["label"])
+    path = str(app.get("path") or "")
+    source = str(app.get("source") or "installed")
+    payload = {
+        "id": f"{source}:{_app_key(label).replace(' ', '-')}",
+        "label": label,
+        "installed": True,
+        "running": False,
+        "path": path,
+        "kind": str(app.get("kind") or "exe"),
+        "allowed": app_is_allowed(label),
+        "source": source,
+    }
+    if path:
+        payload["iconUrl"] = _app_icon_url(label, Path(path))
+    return payload
+
+
+def _mapped_icon_source(config: dict, command: list[str] | None) -> Path | None:
+    if command:
+        candidate = Path(command[0])
+        if candidate.exists():
+            return candidate
+    found = _first_existing(config.get("paths", []))
+    if found:
+        return found
+    globbed = _first_glob(config.get("path_globs", []))
+    if globbed:
+        return globbed
+    return None
+
+
+def _app_icon_url(label: str, source_path: Path) -> str:
+    return f"/api/system/app-icon?label={quote(label, safe='')}&path={quote(str(source_path), safe='')}"
+
+
+def _safe_icon_name(label: str) -> str:
+    cleaned = re.sub(r"[^A-Za-z0-9_.-]+", "-", label).strip(".-")
+    return (cleaned[:48] or "app").lower()
+
+
+def _custom_permission_apps() -> list[dict[str, object]]:
+    apps = []
+    for item in permissions_state().get("customApps", []):
+        if not isinstance(item, dict):
+            continue
+        label = str(item.get("label") or "").strip()
+        path = Path(str(item.get("path") or ""))
+        if not label or not path.exists():
+            continue
+        apps.append({"label": label, "path": str(path), "kind": str(item.get("kind") or "exe"), "source": str(item.get("source") or "custom")})
+    return apps
+
+
+def _discover_folder_apps(root: Path, limit: int = 240) -> list[dict[str, object]]:
+    apps: list[dict[str, object]] = []
+    seen = set()
+    scanned = 0
+    for suffix in ("*.lnk", "*.exe"):
+        try:
+            iterator = root.rglob(suffix)
+            for path in iterator:
+                scanned += 1
+                if scanned > 15000 or len(apps) >= limit:
+                    return sorted(apps, key=lambda item: str(item["label"]).lower())
+                try:
+                    if not path.is_file() or len(path.relative_to(root).parts) > 6:
+                        continue
+                except (OSError, ValueError):
+                    continue
+                label = _friendly_app_label(path.parent.name, path.stem)
+                if _skip_folder_app(label, path):
+                    continue
+                key = _app_key(label)
+                if not key or key in seen:
+                    continue
+                seen.add(key)
+                apps.append(
+                    {
+                        "label": label,
+                        "path": str(path),
+                        "kind": "shortcut" if path.suffix.lower() == ".lnk" else "exe",
+                        "source": "folder",
+                    }
+                )
+        except OSError:
+            continue
+    return sorted(apps, key=lambda item: str(item["label"]).lower())
+
+
+def _skip_folder_app(label: str, path: Path) -> bool:
+    lowered = f"{label} {path.name}".lower()
+    blocked = ("uninstall", "unins", "setup", "update", "crash", "helper", "service", "redistributable")
+    return any(word in lowered for word in blocked)
+
+
+def _discover_start_menu_apps(limit: int = 180) -> list[dict[str, object]]:
+    blocked = ("uninstall", "readme", "license", "help", "manual", "website", "documentation")
+    shortcuts: list[dict[str, object]] = []
+    for root in START_MENU_DIRS:
+        if not root.exists():
+            continue
+        for path in root.rglob("*.lnk"):
+            name = path.stem.strip()
+            lowered = name.lower()
+            if not name or any(word in lowered for word in blocked):
+                continue
+            shortcuts.append({"label": name, "path": str(path), "kind": "shortcut", "source": "start menu"})
+            if len(shortcuts) >= limit:
+                return sorted(shortcuts, key=lambda item: str(item["label"]).lower())
+    return sorted(shortcuts, key=lambda item: str(item["label"]).lower())
+
+
+def _discover_registry_apps(limit: int = 180) -> list[dict[str, object]]:
+    if winreg is None:
+        return []
+    apps: list[dict[str, object]] = []
+    for hive, key_path in UNINSTALL_REGISTRY_KEYS:
+        if hive is None:
+            continue
+        try:
+            with winreg.OpenKey(hive, key_path) as root:
+                for index in range(winreg.QueryInfoKey(root)[0]):
+                    try:
+                        subkey_name = winreg.EnumKey(root, index)
+                        with winreg.OpenKey(root, subkey_name) as subkey:
+                            name = _registry_value(subkey, "DisplayName")
+                            if not name or _skip_registry_app(name):
+                                continue
+                            exe = _registry_app_executable(subkey)
+                            if not exe:
+                                continue
+                            apps.append({"label": name, "path": str(exe), "kind": "exe", "source": "installed"})
+                            if len(apps) >= limit:
+                                return sorted(apps, key=lambda item: str(item["label"]).lower())
+                    except OSError:
+                        continue
+        except OSError:
+            continue
+    return sorted(apps, key=lambda item: str(item["label"]).lower())
+
+
+def _registry_value(key, name: str) -> str:
+    try:
+        value, _kind = winreg.QueryValueEx(key, name)
+    except OSError:
+        return ""
+    return str(value or "").strip()
+
+
+def _skip_registry_app(name: str) -> bool:
+    lowered = name.lower()
+    blocked = ("driver", "runtime", "redistributable", "update", "hotfix", "sdk", "windows software development kit")
+    return any(word in lowered for word in blocked)
+
+
+def _registry_app_executable(key) -> Path | None:
+    for value_name in ("DisplayIcon", "InstallLocation"):
+        raw = _registry_value(key, value_name)
+        if not raw:
+            continue
+        candidate = _extract_exe_path(raw)
+        if candidate and candidate.exists():
+            return candidate
+        location = Path(raw.strip('"'))
+        if location.exists() and location.is_dir():
+            exe = _first_executable_in(location)
+            if exe:
+                return exe
+    return None
+
+
+def _extract_exe_path(value: str) -> Path | None:
+    cleaned = value.strip().strip('"')
+    match = re.search(r"([A-Za-z]:\\[^,]+?\.exe)", cleaned, re.IGNORECASE)
+    if match:
+        return Path(match.group(1).strip('"'))
+    if cleaned.lower().endswith(".exe"):
+        return Path(cleaned)
+    return None
+
+
+def _first_executable_in(directory: Path) -> Path | None:
+    try:
+        direct = sorted(directory.glob("*.exe"), key=lambda path: path.name.lower())
+    except OSError:
+        return None
+    ignored = ("unins", "uninstall", "update", "setup", "helper", "crash", "service")
+    for exe in direct:
+        lowered = exe.stem.lower()
+        if not any(word in lowered for word in ignored):
+            return exe
+    return None
+
+
+def _discover_program_files_apps(limit: int = 120) -> list[dict[str, object]]:
+    apps: list[dict[str, object]] = []
+    ignored_dirs = {"Common Files", "WindowsApps", "Microsoft", "Microsoft.NET", "Windows Defender"}
+    for root in PROGRAM_SCAN_DIRS:
+        if not root.exists():
+            continue
+        try:
+            vendors = sorted([path for path in root.iterdir() if path.is_dir()], key=lambda path: path.name.lower())
+        except OSError:
+            continue
+        for vendor in vendors:
+            if vendor.name in ignored_dirs:
+                continue
+            exe = _first_executable_in(vendor)
+            if not exe:
+                try:
+                    child_dirs = [path for path in vendor.iterdir() if path.is_dir()]
+                except OSError:
+                    child_dirs = []
+                for child in sorted(child_dirs, key=lambda path: path.name.lower())[:4]:
+                    exe = _first_executable_in(child)
+                    if exe:
+                        break
+            if exe:
+                label = _friendly_app_label(vendor.name, exe.stem)
+                apps.append({"label": label, "path": str(exe), "kind": "exe", "source": "program files"})
+                if len(apps) >= limit:
+                    return sorted(apps, key=lambda item: str(item["label"]).lower())
+    return sorted(apps, key=lambda item: str(item["label"]).lower())
+
+
+def _friendly_app_label(folder_name: str, exe_stem: str) -> str:
+    cleaned = re.sub(r"[_-]+", " ", exe_stem).strip()
+    if cleaned.lower() in {"app", "launcher", "main"}:
+        cleaned = folder_name
+    return cleaned or folder_name
+
+
+def _find_installed_app(target: str) -> dict[str, object] | None:
+    wanted = _app_key(target)
+    if not wanted:
+        return None
+    apps = _discover_installed_apps()
+    for app in apps:
+        if _app_key(str(app["label"])) == wanted:
+            return app
+    for app in apps:
+        key = _app_key(str(app["label"]))
+        if wanted in key or key in wanted:
+            return app
+    return None
 
 
 def _open_app(exe_names: list[str], fallback_url: str | None, label: str) -> str:
@@ -483,13 +892,20 @@ def run_open_target_action(text: str) -> str | None:
     if not open_match:
         return None
 
-    target = open_match.group(1).strip(" .")
+    target = _clean_open_target(open_match.group(1))
     if re.match(r"^(?:file|folder)\b", target, re.IGNORECASE):
         return None
     if " latest code" in f" {target.lower()}":
         return None
 
     return _open_common_target(target)
+
+
+def _clean_open_target(target: str) -> str:
+    cleaned = " ".join(target.strip(" .").split())
+    cleaned = re.sub(r"\b(?:please|for me|bro|broh|now)\b", "", cleaned, flags=re.IGNORECASE)
+    cleaned = re.sub(r"\s+", " ", cleaned).strip(" .")
+    return cleaned
 
 
 def run_close_target_action(text: str) -> str | None:

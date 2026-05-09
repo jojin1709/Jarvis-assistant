@@ -44,7 +44,7 @@ import {
   updateProfile,
 } from "../services/api.js";
 
-const providers = ["auto", "groq", "openai", "claude", "ollama", "gemini", "openrouter", "local_llamacpp"];
+const providers = ["auto", "groq", "openai", "claude", "ollama", "gemini", "openrouter", "local_llamacpp", "local_whisper", "deepseek", "nvidia", "sarvam"];
 
 const fallbackPermissions = {
   fullSystemAccess: false,
@@ -57,14 +57,16 @@ const fallbackPermissions = {
     terminalExecution: false,
     appControl: true,
     voiceActivation: true,
-    automationMode: false,
+    automationMode: true,
     internetAccess: true,
     backgroundListening: true,
   },
-  confirmations: { low: false, medium: true, high: true },
+  confirmations: { low: false, medium: false, high: true },
   protectedFolders: [],
   protectedFiles: [],
   protectedApps: [],
+  allowedApps: [],
+  customApps: [],
   allowedWorkspaces: [],
 };
 
@@ -103,6 +105,10 @@ export default function SettingsPage() {
     setMemoryPath(runtime.memoryStorage?.path || runtime.profile?.memory_storage_path || "");
   }, [runtime.memoryStorage?.path, runtime.profile?.memory_storage_path]);
 
+  function logError(error, fallback) {
+    runtime.addExecutionLog({ message: error?.message || fallback, level: "error" });
+  }
+
   async function patchPermissions(patch) {
     setSaving(true);
     try {
@@ -117,98 +123,173 @@ export default function SettingsPage() {
   }
 
   async function handleClearMemory() {
-    const result = await clearMemory();
-    runtime.setResponse(result.response);
-    runtime.addExecutionLog({ message: result.response, level: "success" });
+    try {
+      const result = await clearMemory();
+      runtime.setResponse(result.response);
+      runtime.setMemory(result.profile || runtime.memory);
+      runtime.addExecutionLog({ message: result.response, level: "success" });
+    } catch (error) {
+      logError(error, "Memory clear failed");
+    }
   }
 
   async function handleExportMemory() {
-    const data = await exportMemory();
-    const blob = new Blob([JSON.stringify(data, null, 2)], { type: "application/json" });
-    const url = URL.createObjectURL(blob);
-    const link = document.createElement("a");
-    link.href = url;
-    link.download = "jx-jarvis-memory-export.json";
-    link.click();
-    URL.revokeObjectURL(url);
-    runtime.addExecutionLog({ message: "Memory exported", level: "success" });
+    try {
+      const data = await exportMemory();
+      const blob = new Blob([JSON.stringify(data, null, 2)], { type: "application/json" });
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.href = url;
+      link.download = "jx-jarvis-memory-export.json";
+      link.click();
+      URL.revokeObjectURL(url);
+      runtime.addExecutionLog({ message: "Memory exported", level: "success" });
+    } catch (error) {
+      logError(error, "Memory export failed");
+    }
   }
 
   async function toggleOpenAtLogin() {
-    if (!window.jxJarvis?.setOpenAtLogin) return;
-    const enabled = await window.jxJarvis.setOpenAtLogin(!openAtLogin);
-    setOpenAtLogin(Boolean(enabled));
+    if (!window.jxJarvis?.setOpenAtLogin) {
+      runtime.addExecutionLog({ message: "Launch at login is available in the desktop app.", level: "warning" });
+      return;
+    }
+    try {
+      const enabled = await window.jxJarvis.setOpenAtLogin(!openAtLogin);
+      setOpenAtLogin(Boolean(enabled));
+      runtime.addExecutionLog({ message: `Launch at login ${enabled ? "enabled" : "disabled"}`, level: "success" });
+    } catch (error) {
+      logError(error, "Could not update launch at login");
+    }
   }
 
   async function patchProfile(patch) {
-    const result = await updateProfile(patch);
-    runtime.setProfile(result.profile);
-    runtime.setMemory({ ...(runtime.memory || {}), ...result.profile });
+    try {
+      const result = await updateProfile(patch);
+      runtime.setProfile(result.profile);
+      runtime.setMemory({ ...(runtime.memory || {}), ...result.profile });
+      runtime.addExecutionLog({ message: "Profile updated", level: "success" });
+    } catch (error) {
+      logError(error, "Profile update failed");
+    }
   }
 
   async function chooseMemoryFolder() {
-    const selected = await window.jxJarvis?.chooseFolder?.();
-    if (selected) setMemoryPath(selected);
+    if (!window.jxJarvis?.chooseFolder) {
+      runtime.addExecutionLog({ message: "Folder browsing is available in the desktop app. Type a path and press Save.", level: "warning" });
+      return;
+    }
+    try {
+      const selected = await window.jxJarvis.chooseFolder("Choose Jarvis memory folder");
+      if (selected) setMemoryPath(selected);
+    } catch (error) {
+      logError(error, "Could not open folder picker");
+    }
   }
 
   async function saveMemoryFolder() {
-    const result = await setupMemoryStorage(memoryPath);
-    runtime.setMemoryStorage(result.memory);
-    runtime.setProfile(result.profile);
-    runtime.addExecutionLog({ message: `Memory storage configured: ${result.memory.path}`, level: "success" });
+    try {
+      const result = await setupMemoryStorage(memoryPath);
+      runtime.setMemoryStorage(result.memory);
+      runtime.setProfile(result.profile);
+      runtime.addExecutionLog({ message: `Memory storage configured: ${result.memory.path}`, level: "success" });
+    } catch (error) {
+      logError(error, "Memory storage setup failed");
+    }
   }
 
   async function backupBrain() {
-    const result = await backupMemoryStorage();
-    runtime.addExecutionLog({ message: `Memory backup created: ${result.backup.path}`, level: "success" });
+    try {
+      const result = await backupMemoryStorage();
+      runtime.addExecutionLog({ message: `Memory backup created: ${result.backup.path}`, level: "success" });
+    } catch (error) {
+      logError(error, "Memory backup failed");
+    }
   }
 
   async function clearBrain() {
-    const result = await clearBrainMemory();
-    runtime.setMemoryStorage(result.memory);
-    runtime.addExecutionLog({ message: "Brain storage cleared", level: "warning" });
+    try {
+      const result = await clearBrainMemory();
+      runtime.setMemoryStorage(result.memory);
+      runtime.addExecutionLog({ message: "Brain storage cleared", level: "warning" });
+    } catch (error) {
+      logError(error, "Brain storage clear failed");
+    }
   }
 
   async function refreshProviders() {
-    const result = await getProviders();
-    runtime.setAiProviders(result.providers || [], result.config || null, result.ollamaModels || []);
+    try {
+      const result = await getProviders();
+      runtime.setAiProviders(result.providers || [], result.config || null, result.ollamaModels || []);
+      runtime.addExecutionLog({ message: "AI providers refreshed", level: "success" });
+    } catch (error) {
+      logError(error, "Provider refresh failed");
+    }
   }
 
   async function patchProviderConfig(patch) {
-    const result = await updateProviderConfig(patch);
-    runtime.setAiProviders(result.providers || [], result.config || null, result.ollamaModels || []);
-    runtime.addExecutionLog({ message: "AI provider settings updated", level: "success" });
+    try {
+      const result = await updateProviderConfig(patch);
+      runtime.setAiProviders(result.providers || [], result.config || null, result.ollamaModels || []);
+      runtime.addExecutionLog({ message: "AI provider settings updated", level: "success" });
+    } catch (error) {
+      logError(error, "AI provider settings update failed");
+    }
   }
 
   async function saveKey(provider) {
     const apiKey = (providerKeys[provider] || "").trim();
-    if (!apiKey) return;
-    const result = await saveProviderKey(provider, apiKey);
-    setProviderKeys((current) => ({ ...current, [provider]: "" }));
-    runtime.setAiProviders(result.providers || [], result.config || null, result.ollamaModels || []);
-    runtime.addExecutionLog({ message: `AI provider key saved: ${provider}`, level: "success" });
+    if (!apiKey) {
+      runtime.addExecutionLog({ message: `Paste a key before saving ${provider}.`, level: "warning" });
+      return;
+    }
+    try {
+      const result = await saveProviderKey(provider, apiKey);
+      setProviderKeys((current) => ({ ...current, [provider]: "" }));
+      runtime.setAiProviders(result.providers || [], result.config || null, result.ollamaModels || []);
+      runtime.addExecutionLog({ message: `AI provider key saved: ${provider}`, level: "success" });
+    } catch (error) {
+      logError(error, `AI provider key save failed: ${provider}`);
+    }
   }
 
   async function removeKey(provider) {
-    const result = await removeProviderKey(provider);
-    runtime.setAiProviders(result.providers || [], result.config || null, result.ollamaModels || []);
-    runtime.addExecutionLog({ message: `AI provider key removed: ${provider}`, level: "warning" });
+    try {
+      const result = await removeProviderKey(provider);
+      runtime.setAiProviders(result.providers || [], result.config || null, result.ollamaModels || []);
+      runtime.addExecutionLog({ message: `AI provider key removed: ${provider}`, level: "warning" });
+    } catch (error) {
+      logError(error, `AI provider key remove failed: ${provider}`);
+    }
   }
 
   async function runProviderTest(provider, model) {
     setProviderTests((current) => ({ ...current, [provider]: { status: "running", message: "Testing..." } }));
-    const result = await testProvider(provider, model);
-    setProviderTests((current) => ({
-      ...current,
-      [provider]: {
-        status: result.ok ? "success" : "error",
-        message: result.ok ? `${result.message || "Online"} (${result.latencyMs || 0} ms)` : result.error,
-      },
-    }));
+    try {
+      const result = await testProvider(provider, model);
+      setProviderTests((current) => ({
+        ...current,
+        [provider]: {
+          status: result.ok ? "success" : "error",
+          message: result.ok ? `${result.message || "Online"} (${result.latencyMs || 0} ms)` : result.error,
+        },
+      }));
+    } catch (error) {
+      setProviderTests((current) => ({
+        ...current,
+        [provider]: { status: "error", message: error?.message || "Provider test failed" },
+      }));
+    }
+  }
+
+  function openExternal(event, url) {
+    if (!window.jxJarvis?.openExternal) return;
+    event.preventDefault();
+    window.jxJarvis.openExternal(url).catch((error) => logError(error, "Could not open external link"));
   }
 
   return (
-    <div className="space-y-4">
+    <div className="settings-compact min-h-full space-y-3">
       <div className="grid gap-4 xl:grid-cols-2">
         <SettingsCard icon={Sparkles} title="Profile & Preferences">
           <label className="text-sm text-textSecondary" htmlFor="profile-name">Name</label>
@@ -249,8 +330,23 @@ export default function SettingsPage() {
         </SettingsCard>
 
         <SettingsCard icon={Palette} title="Appearance">
-          <Toggle label="Dark premium theme" checked={runtime.settings.theme === "dark"} onChange={() => runtime.updateSettings({ theme: "dark" })} />
-          <Toggle label="Startup audio" checked={runtime.settings.startupAudio} onChange={() => runtime.updateSettings({ startupAudio: !runtime.settings.startupAudio })} />
+          <Toggle
+            label="Dark premium theme"
+            checked={runtime.settings.theme === "dark"}
+            onChange={() => {
+              runtime.updateSettings({ theme: "dark" });
+              runtime.addExecutionLog({ message: "Dark premium theme is active", level: "success" });
+            }}
+          />
+          <Toggle
+            label="Startup audio"
+            checked={runtime.settings.startupAudio}
+            onChange={() => {
+              const enabled = !runtime.settings.startupAudio;
+              runtime.updateSettings({ startupAudio: enabled });
+              runtime.addExecutionLog({ message: `Startup audio ${enabled ? "enabled" : "disabled"}`, level: "success" });
+            }}
+          />
           <Toggle label="Launch Jarvis at login" checked={openAtLogin} onChange={toggleOpenAtLogin} />
         </SettingsCard>
 
@@ -619,6 +715,7 @@ export default function SettingsPage() {
           href="https://www.linkedin.com/in/jojin-john-74386b34a"
           target="_blank"
           rel="noreferrer"
+          onClick={(event) => openExternal(event, "https://www.linkedin.com/in/jojin-john-74386b34a")}
           className="mt-4 inline-flex h-11 items-center justify-center rounded-2xl border border-line bg-white/[0.035] px-4 text-sm font-medium text-textPrimary transition hover:border-cyanCore/40 hover:text-cyanCore"
         >
           Open LinkedIn

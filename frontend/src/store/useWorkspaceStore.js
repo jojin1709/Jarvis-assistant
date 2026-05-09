@@ -9,6 +9,17 @@ const initialSettings = {
   voiceLanguage: "auto",
 };
 
+function isCleanConversation(item) {
+  const transcript = String(item?.transcript || "").trim().toLowerCase();
+  const response = String(item?.response || "").trim().toLowerCase();
+  return (
+    transcript !== "startup greeting" &&
+    !response.startsWith("blocked") &&
+    !response.startsWith("confirmation required") &&
+    !response.startsWith("approval requested")
+  );
+}
+
 export const useWorkspaceStore = create(
   persist(
     (set, get) => ({
@@ -70,9 +81,20 @@ export const useWorkspaceStore = create(
       setCommandPaletteOpen: (commandPaletteOpen) => set({ commandPaletteOpen }),
       updateSettings: (patch) => set({ settings: { ...get().settings, ...patch } }),
 
-      addConversation: (item) =>
+      addConversation: (item) => {
+        if (!isCleanConversation(item)) return null;
+        const entry = { id: crypto.randomUUID(), createdAt: new Date().toISOString(), ...item };
         set((state) => ({
-          chatHistory: [{ id: crypto.randomUUID(), createdAt: new Date().toISOString(), ...item }, ...state.chatHistory].slice(0, 80),
+          chatHistory: [entry, ...state.chatHistory].slice(0, 80),
+        }));
+        return entry.id;
+      },
+      updateConversation: (id, patch) =>
+        set((state) => ({
+          chatHistory: state.chatHistory
+            .map((item) => (item.id === id ? { ...item, ...patch } : item))
+            .filter(isCleanConversation)
+            .slice(0, 80),
         })),
       addVoiceHistory: (item) =>
         set((state) => ({
@@ -90,6 +112,8 @@ export const useWorkspaceStore = create(
           executionLogs: [{ id: crypto.randomUUID(), createdAt: new Date().toISOString(), level: "info", ...log }, ...state.executionLogs].slice(0, 120),
         })),
       setExecutionLogs: (logs) => set({ executionLogs: logs }),
+      clearChatHistory: () => set({ chatHistory: [] }),
+      clearVoiceHistory: () => set({ voiceHistory: [] }),
       addNotification: (notification) =>
         set((state) => ({
           notifications: [{ id: crypto.randomUUID(), createdAt: new Date().toISOString(), ...notification }, ...state.notifications].slice(0, 30),
@@ -98,11 +122,16 @@ export const useWorkspaceStore = create(
     }),
     {
       name: "jx-jarvis-workspace",
+      version: 2,
+      migrate: (state) => ({
+        ...state,
+        chatHistory: Array.isArray(state?.chatHistory) ? state.chatHistory.filter(isCleanConversation) : [],
+      }),
       partialize: (state) => ({
         activePage: state.activePage,
         languageMode: state.languageMode,
         wakeEnabled: state.wakeEnabled,
-        chatHistory: state.chatHistory.slice(0, 30),
+        chatHistory: state.chatHistory.filter(isCleanConversation).slice(0, 30),
         voiceHistory: state.voiceHistory.slice(0, 30),
         settings: state.settings,
       }),

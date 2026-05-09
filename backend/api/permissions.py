@@ -12,9 +12,26 @@ RUNTIME_DIR = Path(__file__).resolve().parents[1] / "runtime"
 PERMISSIONS_PATH = RUNTIME_DIR / "permissions.json"
 ACTIVITY_PATH = RUNTIME_DIR / "permission_activity.json"
 HOME = Path.home()
+PERMISSIONS_SCHEMA_VERSION = 4
+
+DEFAULT_ALLOWED_APPS = [
+    "Chrome",
+    "Edge",
+    "VS Code",
+    "Notepad",
+    "Calculator",
+    "File Explorer",
+    "Windows Terminal",
+    "Command Prompt",
+    "PowerShell",
+    "Paint",
+    "Spotify",
+    "Discord",
+]
 
 
 DEFAULT_PERMISSIONS = {
+    "schemaVersion": PERMISSIONS_SCHEMA_VERSION,
     "fullSystemAccess": False,
     "safeMode": False,
     "autoExecutionMode": True,
@@ -25,13 +42,13 @@ DEFAULT_PERMISSIONS = {
         "terminalExecution": False,
         "appControl": True,
         "voiceActivation": True,
-        "automationMode": False,
+        "automationMode": True,
         "internetAccess": True,
         "backgroundListening": True,
     },
     "confirmations": {
         "low": False,
-        "medium": True,
+        "medium": False,
         "high": True,
     },
     "protectedFolders": [
@@ -49,6 +66,8 @@ DEFAULT_PERMISSIONS = {
         "windows security",
         "banking",
     ],
+    "allowedApps": DEFAULT_ALLOWED_APPS,
+    "customApps": [],
     "allowedWorkspaces": [
         str(HOME / "Desktop" / "JX-JARVIS-Code"),
         str(HOME / "Desktop" / "Jarvis Workspace"),
@@ -90,7 +109,11 @@ class PermissionDecision:
 
 def permissions_state() -> dict:
     data = _load_json(PERMISSIONS_PATH, DEFAULT_PERMISSIONS)
-    return _merge_defaults(data)
+    state = _merge_defaults(data)
+    upgraded = _upgrade_permissions(state)
+    if upgraded != data:
+        _save_json(PERMISSIONS_PATH, upgraded)
+    return upgraded
 
 
 def update_permissions(patch: dict) -> dict:
@@ -143,6 +166,9 @@ def evaluate_permission(
 
     if app and _is_protected_app(app, state):
         return _deny(f"Blocked: {app} is protected.", risk, label)
+
+    if app and action in {"app.open", "app.close"} and not _is_allowed_app(app, state):
+        return _deny(f"Blocked: {app} is not enabled in Apps.", risk, label)
 
     if path:
         path_decision = _evaluate_path(Path(path), action, state)
@@ -245,6 +271,30 @@ def _is_protected_app(app: str, state: dict) -> bool:
     return any(item.lower().strip() in normalized or normalized in item.lower().strip() for item in state.get("protectedApps", []))
 
 
+def _is_allowed_app(app: str, state: dict) -> bool:
+    allowed = state.get("allowedApps", [])
+    normalized = _normalize_app_name(app)
+    for item in allowed:
+        allowed_name = _normalize_app_name(item)
+        if not allowed_name:
+            continue
+        if allowed_name == normalized:
+            return True
+        if len(allowed_name) >= 4 and allowed_name in normalized:
+            return True
+        if len(normalized) >= 4 and normalized in allowed_name:
+            return True
+    return False
+
+
+def app_is_allowed(app: str) -> bool:
+    return _is_allowed_app(app, permissions_state())
+
+
+def _normalize_app_name(value: object) -> str:
+    return " ".join(str(value or "").lower().replace("-", " ").replace("_", " ").split())
+
+
 def _deny(message: str, risk: str, label: str, confirmable: bool = False) -> PermissionDecision:
     return PermissionDecision(False, confirmable, message, risk)
 
@@ -269,7 +319,64 @@ def _save_json(path: Path, data) -> None:
 
 
 def _merge_defaults(data: dict) -> dict:
-    return _deep_merge(deepcopy(DEFAULT_PERMISSIONS), data if isinstance(data, dict) else {})
+    merged = _deep_merge(deepcopy(DEFAULT_PERMISSIONS), data if isinstance(data, dict) else {})
+    for key in ("allowedWorkspaces", "protectedApps"):
+        merged[key] = _dedupe([*DEFAULT_PERMISSIONS.get(key, []), *merged.get(key, [])])
+    merged["allowedApps"] = _dedupe(merged.get("allowedApps", []))
+    merged["customApps"] = _dedupe_custom_apps(merged.get("customApps", []))
+    return merged
+
+
+def _upgrade_permissions(state: dict) -> dict:
+    version = int(state.get("schemaVersion") or 0)
+    if version < 2:
+        controls = state.setdefault("controls", {})
+        controls["automationMode"] = True
+        confirmations = state.setdefault("confirmations", {})
+        confirmations["medium"] = False
+    if version < 3:
+        state["allowedApps"] = _dedupe([*DEFAULT_ALLOWED_APPS, *state.get("allowedApps", [])])
+    if version < 4:
+        state["customApps"] = _dedupe_custom_apps(state.get("customApps", []))
+    state["schemaVersion"] = PERMISSIONS_SCHEMA_VERSION
+    return state
+
+
+def _dedupe(values: list[str]) -> list[str]:
+    seen = set()
+    result = []
+    for value in values:
+        normalized = str(value).strip().lower()
+        if not normalized or normalized in seen:
+            continue
+        seen.add(normalized)
+        result.append(str(value))
+    return result
+
+
+def _dedupe_custom_apps(values: list[dict]) -> list[dict[str, str]]:
+    seen = set()
+    result = []
+    for value in values if isinstance(values, list) else []:
+        if not isinstance(value, dict):
+            continue
+        label = str(value.get("label") or "").strip()
+        path = str(value.get("path") or "").strip()
+        if not label or not path:
+            continue
+        key = f"{label.lower()}::{path.lower()}"
+        if key in seen:
+            continue
+        seen.add(key)
+        result.append(
+            {
+                "label": label,
+                "path": path,
+                "kind": str(value.get("kind") or "exe"),
+                "source": str(value.get("source") or "custom"),
+            }
+        )
+    return result
 
 
 def _deep_merge(base: dict, patch: dict) -> dict:

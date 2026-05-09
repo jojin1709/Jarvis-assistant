@@ -17,7 +17,7 @@ const commands = [
   { label: "Run Autonomous Task", agent: true, text: "", icon: Command, hint: "Plan and execute with tools" },
 ];
 
-export default function CommandPalette({ open, onClose, onRun }) {
+export default function CommandPalette({ open, onClose, onRun, disabled = false }) {
   const [query, setQuery] = useState("");
   const navigate = useNavigate();
   const filtered = useMemo(() => {
@@ -39,7 +39,8 @@ export default function CommandPalette({ open, onClose, onRun }) {
 
     const text = command.text || query;
     if (!text.trim()) return;
-    onRun(text, { agent: command.agent });
+    if (disabled) return;
+    Promise.resolve(onRun(text, { agent: command.agent })).catch(() => {});
     onClose();
   }
 
@@ -48,7 +49,7 @@ export default function CommandPalette({ open, onClose, onRun }) {
     const first = filtered[0];
     if (first && !query.trim()) run(first);
     else if (first?.text?.endsWith(" ")) run({ ...first, text: `${first.text}${query}` });
-    else onRun(query, { agent: true });
+    else if (!disabled) Promise.resolve(onRun(query, { agent: true })).catch(() => {});
     onClose();
   }
 
@@ -89,8 +90,9 @@ export default function CommandPalette({ open, onClose, onRun }) {
                   <button
                     key={command.label}
                     type="button"
+                    disabled={disabled && !command.page}
                     onClick={() => run(command)}
-                    className="flex w-full items-center gap-3 rounded-2xl px-3 py-3 text-left transition hover:bg-white/[0.055]"
+                    className="flex w-full items-center gap-3 rounded-2xl px-3 py-3 text-left transition hover:bg-white/[0.055] disabled:cursor-not-allowed disabled:opacity-40"
                   >
                     <span className="grid h-10 w-10 place-items-center rounded-2xl bg-white/[0.045] text-cyanCore">
                       <Icon size={18} />

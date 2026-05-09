@@ -10,7 +10,11 @@ export default function AssistantOverlay({ open, onClose, runtime }) {
     if (!text.trim()) return;
     const command = text.trim();
     setText("");
-    await runtime.runTextFlow(command, { agent: true });
+    try {
+      await runtime.runTextFlow(command, { agent: true });
+    } catch (error) {
+      runtime.addExecutionLog({ message: error?.message || "Overlay command failed", level: "error" });
+    }
   }
 
   return (
@@ -39,7 +43,8 @@ export default function AssistantOverlay({ open, onClose, runtime }) {
               <button
                 type="button"
                 onClick={runtime.runVoiceFlow}
-                className="inline-flex h-10 items-center gap-2 rounded-xl border border-line bg-white/[0.035] px-3 text-sm text-textSecondary hover:text-textPrimary"
+                disabled={!runtime.backendOnline || runtime.busy}
+                className="inline-flex h-10 items-center gap-2 rounded-xl border border-line bg-white/[0.035] px-3 text-sm text-textSecondary hover:text-textPrimary disabled:cursor-not-allowed disabled:opacity-40"
               >
                 <Mic2 size={15} />
                 Voice
@@ -47,7 +52,8 @@ export default function AssistantOverlay({ open, onClose, runtime }) {
               <button
                 type="button"
                 onClick={runtime.captureVisionFlow}
-                className="inline-flex h-10 items-center gap-2 rounded-xl border border-line bg-white/[0.035] px-3 text-sm text-textSecondary hover:text-textPrimary"
+                disabled={!runtime.backendOnline || runtime.busy}
+                className="inline-flex h-10 items-center gap-2 rounded-xl border border-line bg-white/[0.035] px-3 text-sm text-textSecondary hover:text-textPrimary disabled:cursor-not-allowed disabled:opacity-40"
               >
                 <Camera size={15} />
                 Screen
@@ -55,7 +61,7 @@ export default function AssistantOverlay({ open, onClose, runtime }) {
             </div>
             <button
               type="submit"
-              disabled={!text.trim()}
+              disabled={!text.trim() || !runtime.backendOnline || runtime.busy}
               className="inline-flex h-10 items-center gap-2 rounded-xl bg-cyanCore px-4 text-sm font-semibold text-[#021018] disabled:opacity-40"
             >
               <Send size={15} />

@@ -12,8 +12,40 @@ from api.memory_storage import remember_project
 
 
 CODE_ROOT = Path.home() / "Desktop" / "JX-JARVIS-Code"
+RUNTIME_DIR = Path(__file__).resolve().parents[1] / "runtime"
+PENDING_BRIEF_PATH = RUNTIME_DIR / "pending_code_brief.json"
 MAX_FILES = 10
 MAX_FILE_CHARS = 60000
+READY_RESPONSE = "Yes sir, it is ready."
+GENERIC_WEBSITE_WORDS = {
+    "a",
+    "an",
+    "and",
+    "beautiful",
+    "best",
+    "better",
+    "cool",
+    "create",
+    "develop",
+    "for",
+    "full",
+    "good",
+    "great",
+    "landing",
+    "make",
+    "me",
+    "modern",
+    "nice",
+    "page",
+    "premium",
+    "professional",
+    "responsive",
+    "site",
+    "stylish",
+    "the",
+    "website",
+    "web",
+}
 
 
 CODE_TRIGGERS = (
@@ -227,6 +259,106 @@ def is_portfolio_request(text: str) -> bool:
     return "portfolio" in normalized and any(word in normalized for word in ("website", "site", "web", "page", "app"))
 
 
+def should_collect_website_brief(text: str) -> bool:
+    normalized = text.lower()
+    if not _is_website_request(normalized):
+        return False
+
+    detail_markers = (
+        "about",
+        "booking",
+        "brand",
+        "business",
+        "contact",
+        "ecommerce",
+        "gallery",
+        "menu",
+        "portfolio",
+        "pricing",
+        "restaurant",
+        "school",
+        "services",
+        "shop",
+        "store",
+        "testimonials",
+        "for ",
+    )
+    if sum(marker in normalized for marker in detail_markers) >= 2:
+        return False
+
+    words = re.findall(r"[a-z0-9]+", normalized)
+    specific_words = [word for word in words if word not in GENERIC_WEBSITE_WORDS and len(word) > 2]
+    return len(specific_words) < 4
+
+
+def start_website_brief(user_request: str) -> str:
+    _save_pending_brief(
+        {
+            "kind": "website",
+            "original_request": user_request,
+            "created_at": datetime.now().isoformat(timespec="seconds"),
+        }
+    )
+    return (
+        "I can build it, but I need your website options first so it is not a random template.\n\n"
+        "Reply with these details:\n"
+        "1. Website type or business: portfolio, shop, restaurant, agency, gym, SaaS, etc.\n"
+        "2. Name/brand to show on the site.\n"
+        "3. Style: dark, light, luxury, minimal, colorful, tech, etc.\n"
+        "4. Sections needed: hero, services, pricing, gallery, contact, booking, testimonials, etc.\n"
+        "5. Main goal: get clients, sell products, show work, collect leads, book calls, etc.\n\n"
+        "After you answer, I will create the code in VS Code, save it under JX-JARVIS-Code with the time, and open a browser preview."
+    )
+
+
+def consume_pending_website_brief(text: str) -> str | None:
+    pending = _load_pending_brief()
+    if not pending or pending.get("kind") != "website":
+        return None
+
+    normalized = " ".join(text.lower().strip().split())
+    if normalized in {"cancel", "stop", "never mind", "nevermind"}:
+        _clear_pending_brief()
+        return None
+
+    if len(text.strip()) < 8:
+        return None
+
+    _clear_pending_brief()
+    original = str(pending.get("original_request") or "Create a website")
+    return (
+        f"{original}\n\n"
+        "User-approved website brief:\n"
+        f"{text.strip()}\n\n"
+        "Create a finished, custom website from this brief. Use the brand, sections, style, goal, and content direction from the user's answer. "
+        "Do not create a generic agency template unless the user asked for an agency."
+    )
+
+
+def _load_pending_brief() -> dict | None:
+    if not PENDING_BRIEF_PATH.exists():
+        return None
+    try:
+        data = json.loads(PENDING_BRIEF_PATH.read_text(encoding="utf-8"))
+    except (json.JSONDecodeError, OSError):
+        return None
+    if not isinstance(data, dict):
+        return None
+    return data
+
+
+def _save_pending_brief(payload: dict) -> None:
+    RUNTIME_DIR.mkdir(parents=True, exist_ok=True)
+    PENDING_BRIEF_PATH.write_text(json.dumps(payload, indent=2), encoding="utf-8")
+
+
+def _clear_pending_brief() -> None:
+    try:
+        PENDING_BRIEF_PATH.unlink(missing_ok=True)
+    except OSError:
+        pass
+
+
 def create_portfolio_project(user_request: str) -> str:
     return guard_action(
         "code.generate",
@@ -248,7 +380,7 @@ def _create_portfolio_project(user_request: str) -> str:
     preview_text = " Browser preview opened." if preview else ""
     summary = f"Super portfolio website created: {project_dir}. Files: index.html, styles.css, script.js. Validation: {validation}. {open_text}{preview_text}"
     remember_project(project_dir.name, str(project_dir), summary)
-    return summary
+    return READY_RESPONSE
 
 
 def create_code_project(user_request: str, model_response: str) -> str:
@@ -300,7 +432,7 @@ def _create_code_project(user_request: str, model_response: str) -> str:
     preview_text = " Browser preview opened." if preview else ""
     summary = f"Code workspace created: {project_dir}. Files: {file_list}. Validation: {validation}. {open_text}{preview_text}"
     remember_project(project_dir.name, str(project_dir), summary)
-    return summary
+    return READY_RESPONSE
 
 
 def _new_project_dir(project_name: str) -> Path:
@@ -1811,8 +1943,8 @@ def open_code_workspace() -> str:
         CODE_ROOT.mkdir(parents=True, exist_ok=True)
         opened = _open_in_vscode(CODE_ROOT)
         if opened:
-            return f"Opened code workspace folder: {CODE_ROOT}"
-        return f"Code workspace folder is ready: {CODE_ROOT}. VS Code was unavailable or blocked."
+            return READY_RESPONSE
+        return "Yes sir, the code workspace is ready."
 
     return guard_action("file.read", "open code workspace", run, path=CODE_ROOT)
 
@@ -1835,10 +1967,10 @@ def open_latest_code_project() -> str:
         opened = _open_in_vscode(project)
         preview = _open_preview(project)
         if opened and preview:
-            return f"Opened latest code project in VS Code and browser: {project}"
+            return READY_RESPONSE
         if opened:
-            return f"Opened latest code project in VS Code: {project}"
-        return f"Latest code project is ready: {project}. VS Code was unavailable or blocked."
+            return READY_RESPONSE
+        return READY_RESPONSE
 
     return guard_action("file.read", "open latest code project", run, path=project)
 

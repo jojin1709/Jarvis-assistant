@@ -1,4 +1,4 @@
-const { app, BrowserWindow, Tray, dialog, globalShortcut, ipcMain, Menu, Notification } = require("electron");
+const { app, BrowserWindow, Tray, dialog, globalShortcut, ipcMain, Menu, Notification, shell } = require("electron");
 const fs = require("node:fs");
 const path = require("node:path");
 const { spawn } = require("node:child_process");
@@ -214,6 +214,22 @@ async function createWindow() {
     }, 16);
   });
 
+  mainWindow.webContents.setWindowOpenHandler(({ url }) => {
+    if (/^https?:\/\//i.test(url)) {
+      shell.openExternal(url);
+      return { action: "deny" };
+    }
+    return { action: "allow" };
+  });
+
+  mainWindow.webContents.on("will-navigate", (event, url) => {
+    const currentUrl = mainWindow.webContents.getURL();
+    if (/^https?:\/\//i.test(url) && url !== currentUrl && !url.startsWith(process.env.VITE_DEV_SERVER_URL || "file://")) {
+      event.preventDefault();
+      shell.openExternal(url);
+    }
+  });
+
   const devUrl = process.env.VITE_DEV_SERVER_URL;
   if (devUrl) {
     await mainWindow.loadURL(devUrl);
@@ -235,9 +251,15 @@ ipcMain.handle("system:set-open-at-login", (_event, enabled) => {
   app.setLoginItemSettings({ openAtLogin: Boolean(enabled) });
   return app.getLoginItemSettings().openAtLogin;
 });
-ipcMain.handle("system:choose-folder", async () => {
+ipcMain.handle("system:open-external", async (_event, url) => {
+  const target = String(url || "");
+  if (!/^https?:\/\//i.test(target)) return false;
+  await shell.openExternal(target);
+  return true;
+});
+ipcMain.handle("system:choose-folder", async (_event, title) => {
   const result = await dialog.showOpenDialog(mainWindow, {
-    title: "Choose Jarvis memory folder",
+    title: String(title || "Choose folder"),
     properties: ["openDirectory", "createDirectory"],
   });
   if (result.canceled || !result.filePaths.length) return null;

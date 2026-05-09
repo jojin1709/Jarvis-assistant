@@ -6,7 +6,15 @@ from api.ai_provider import ask_ai, ask_ai_code_project, provider_label
 from api.approvals import resolve_approval
 from api.browser_automation import browser_operator
 from api.context_awareness import context_snapshot
-from api.code_writer import create_code_project, create_portfolio_project, extract_code_request, is_portfolio_request
+from api.code_writer import (
+    consume_pending_website_brief,
+    create_code_project,
+    create_portfolio_project,
+    extract_code_request,
+    is_portfolio_request,
+    should_collect_website_brief,
+    start_website_brief,
+)
 from api.execution import add_log, execute_agent_task, execution_logs, preview_execution_plan
 from api.file_ingest import save_and_analyze
 from api.language import (
@@ -57,6 +65,7 @@ from api.permissions import (
 )
 from api.system_tasks import (
     TASKS,
+    app_icon_file,
     extract_file_search,
     extract_google_search,
     extract_youtube_search,
@@ -66,6 +75,7 @@ from api.system_tasks import (
     run_close_target_action,
     run_open_target_action,
     run_system_task,
+    scan_app_folder,
     run_local_file_action,
     search_user_files,
     search_youtube,
@@ -508,22 +518,35 @@ def finish_response(response: str, language: str, speak_response: bool, speak_li
 
 def visual_browser_command(text: str) -> str | None:
     normalized = " ".join(text.lower().strip().split())
-    browser_sites = (
-        "google",
-        "youtube",
-        "github",
-        "stack overflow",
-        "stackoverflow",
-        "linkedin",
-        "reddit",
-    )
+    if _looks_like_simple_open_target(normalized):
+        return None
     browser_verbs = ("navigate to", "go to", "open website", "click ", "scroll", "summarize page", "summarise page")
     if any(phrase in normalized for phrase in browser_verbs):
         return text
-    open_match = re.search(r"\bopen\s+(.+)$", normalized)
-    if open_match and open_match.group(1).strip() in browser_sites:
-        return text
     return None
+
+
+def _looks_like_simple_open_target(normalized: str) -> bool:
+    open_match = re.search(r"\b(?:open|launch|start)\s+(.+)$", normalized)
+    if not open_match:
+        return False
+    target = re.sub(r"\b(?:please|for me|bro|broh|now)\b", "", open_match.group(1)).strip(" .")
+    return target in {
+        "youtube",
+        "google",
+        "gmail",
+        "github",
+        "whatsapp",
+        "chrome",
+        "edge",
+        "notepad",
+        "calculator",
+        "file explorer",
+        "explorer",
+        "vs code",
+        "vscode",
+        "visual studio code",
+    }
 
 
 def run_text_command(
@@ -546,8 +569,19 @@ def run_text_command(
         set_state("memory", "Memory updated.")
         return finish_response(memory_response, language, speak_response, speak_limit=450)
 
+    brief_code_request = consume_pending_website_brief(command_text)
+    if brief_code_request:
+        set_state("coding", "Generating custom website workspace and opening VS Code.")
+        model_response = ask_ai_code_project(brief_code_request)
+        response = create_code_project(brief_code_request, model_response)
+        return finish_response(response, language, speak_response, speak_limit=450)
+
     code_request = extract_code_request(command_text)
     if code_request:
+        if should_collect_website_brief(code_request):
+            set_state("thinking", "Collecting website options before generating code.")
+            response = start_website_brief(code_request)
+            return finish_response(response, language, speak_response, speak_limit=900)
         set_state("coding", "Generating code workspace and opening VS Code.")
         if is_portfolio_request(code_request):
             response = create_portfolio_project(code_request)
@@ -555,6 +589,24 @@ def run_text_command(
             model_response = ask_ai_code_project(code_request)
             response = create_code_project(code_request, model_response)
         return finish_response(response, language, speak_response, speak_limit=450)
+
+    local_file_response = run_local_file_action(command_text)
+    if local_file_response:
+        set_state("executing", "Running local file action.")
+        add_log(local_file_response, "success" if "could not" not in local_file_response.lower() else "error")
+        return finish_response(local_file_response, language, speak_response, speak_limit=450)
+
+    close_target_response = run_close_target_action(command_text)
+    if close_target_response:
+        set_state("executing", "Closing requested target.")
+        add_log(close_target_response, "success" if "successfully" in close_target_response.lower() else "error")
+        return finish_response(close_target_response, language, speak_response, speak_limit=240)
+
+    open_target_response = run_open_target_action(command_text)
+    if open_target_response:
+        set_state("executing", "Opening requested target.")
+        add_log(open_target_response, "success" if "successfully" in open_target_response.lower() or "opened" in open_target_response.lower() else "error")
+        return finish_response(open_target_response, language, speak_response, speak_limit=240)
 
     youtube_query = extract_youtube_search(command_text)
     if youtube_query:
@@ -568,29 +620,11 @@ def run_text_command(
         response = browser_operator.run_async(f"search Google for {google_query}")["response"]
         return finish_response(response, language, speak_response)
 
-    local_file_response = run_local_file_action(command_text)
-    if local_file_response:
-        set_state("executing", "Running local file action.")
-        add_log(local_file_response, "success" if "could not" not in local_file_response.lower() else "error")
-        return finish_response(local_file_response, language, speak_response, speak_limit=450)
-
     browser_command = visual_browser_command(command_text)
     if browser_command:
         set_state("executing", "Running visual browser automation.")
         response = browser_operator.run_async(browser_command)["response"]
         return finish_response(response, language, speak_response, speak_limit=320)
-
-    close_target_response = run_close_target_action(command_text)
-    if close_target_response:
-        set_state("executing", "Closing requested target.")
-        add_log(close_target_response, "success" if "successfully" in close_target_response.lower() else "error")
-        return finish_response(close_target_response, language, speak_response, speak_limit=240)
-
-    open_target_response = run_open_target_action(command_text)
-    if open_target_response:
-        set_state("executing", "Opening requested target.")
-        add_log(open_target_response, "success" if "successfully" in open_target_response.lower() or "opened" in open_target_response.lower() else "error")
-        return finish_response(open_target_response, language, speak_response, speak_limit=240)
 
     file_query = extract_file_search(command_text)
     if file_query:
@@ -755,6 +789,25 @@ def system_tasks():
 @router.get("/system/apps")
 def system_apps():
     return jsonify(apps=list_available_apps())
+
+
+@router.post("/system/apps/scan-folder")
+def system_apps_scan_folder():
+    payload = request.get_json(silent=True) or {}
+    folder_path = str(payload.get("path") or "").strip()
+    if not folder_path:
+        return jsonify(error="Choose a folder to scan."), 400
+    return jsonify(apps=scan_app_folder(folder_path))
+
+
+@router.get("/system/app-icon")
+def system_app_icon():
+    label = str(request.args.get("label") or "app")
+    source_path = str(request.args.get("path") or "")
+    icon = app_icon_file(label, source_path)
+    if not icon:
+        return jsonify(error="Icon not available."), 404
+    return send_file(icon, mimetype="image/x-icon", max_age=86400)
 
 
 @router.post("/system/task")

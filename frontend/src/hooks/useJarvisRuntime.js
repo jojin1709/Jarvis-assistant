@@ -58,7 +58,9 @@ export function useJarvisRuntime() {
   }, [store.mode]);
 
   useEffect(() => {
-    fx.startup();
+    if (store.settings.startupAudio) {
+      fx.startup();
+    }
     const check = async () => {
       try {
         const result = await health();
@@ -273,7 +275,9 @@ export function useJarvisRuntime() {
     fx.click();
     store.setMode(options.agent ? "executing" : "thinking");
     store.setTranscript(text);
+    const pendingResponse = options.agent ? "Planning and executing..." : "Thinking...";
     store.setResponse(options.agent ? "Planning and executing..." : "Working on it...");
+    const conversationId = store.addConversation({ transcript: text, response: pendingResponse });
     store.addExecutionLog({ message: `Received command: ${text}`, level: "info" });
 
     try {
@@ -281,14 +285,22 @@ export function useJarvisRuntime() {
       fx.response();
       const response = result.response || result.summary || "Done.";
       store.setResponse(response);
-      store.addConversation({ transcript: text, response });
+      if (conversationId) {
+        store.updateConversation(conversationId, { response });
+      } else {
+        store.addConversation({ transcript: text, response });
+      }
       if (result.logs) store.setExecutionLogs(result.logs);
       store.setMode("online");
       return result;
     } catch (error) {
       store.setMode("error");
-      store.setResponse(error.message || "Command failed.");
-      store.addExecutionLog({ message: error.message || "Command failed.", level: "error" });
+      const message = error.message || "Command failed.";
+      store.setResponse(message);
+      if (conversationId) {
+        store.updateConversation(conversationId, { response: message });
+      }
+      store.addExecutionLog({ message, level: "error" });
       throw error;
     }
   }
@@ -307,27 +319,42 @@ export function useJarvisRuntime() {
   }
 
   async function pauseAgentFlow() {
-    const result = await pauseAgentTask();
-    store.addExecutionLog({ message: result.message || "Execution paused.", level: "warning" });
-    const thinking = await getThinkingTimeline();
-    store.setThinkingTimeline(thinking.thinking || [], thinking.control || undefined);
-    return result;
+    try {
+      const result = await pauseAgentTask();
+      store.addExecutionLog({ message: result.message || "Execution paused.", level: "warning" });
+      const thinking = await getThinkingTimeline();
+      store.setThinkingTimeline(thinking.thinking || [], thinking.control || undefined);
+      return result;
+    } catch (error) {
+      store.addExecutionLog({ message: error.message || "Pause failed.", level: "error" });
+      throw error;
+    }
   }
 
   async function resumeAgentFlow() {
-    const result = await resumeAgentTask();
-    store.addExecutionLog({ message: result.message || "Execution resumed.", level: "info" });
-    const thinking = await getThinkingTimeline();
-    store.setThinkingTimeline(thinking.thinking || [], thinking.control || undefined);
-    return result;
+    try {
+      const result = await resumeAgentTask();
+      store.addExecutionLog({ message: result.message || "Execution resumed.", level: "info" });
+      const thinking = await getThinkingTimeline();
+      store.setThinkingTimeline(thinking.thinking || [], thinking.control || undefined);
+      return result;
+    } catch (error) {
+      store.addExecutionLog({ message: error.message || "Resume failed.", level: "error" });
+      throw error;
+    }
   }
 
   async function cancelAgentFlow() {
-    const result = await cancelAgentTask();
-    store.addExecutionLog({ message: result.message || "Execution cancelled.", level: "warning" });
-    const thinking = await getThinkingTimeline();
-    store.setThinkingTimeline(thinking.thinking || [], thinking.control || undefined);
-    return result;
+    try {
+      const result = await cancelAgentTask();
+      store.addExecutionLog({ message: result.message || "Execution cancelled.", level: "warning" });
+      const thinking = await getThinkingTimeline();
+      store.setThinkingTimeline(thinking.thinking || [], thinking.control || undefined);
+      return result;
+    } catch (error) {
+      store.addExecutionLog({ message: error.message || "Cancel failed.", level: "error" });
+      throw error;
+    }
   }
 
   async function captureVisionFlow() {
@@ -437,23 +464,47 @@ export function useJarvisRuntime() {
   }
 
   async function pauseBrowserFlow() {
-    const result = await pauseBrowserTask();
-    store.setBrowserState(result);
+    try {
+      const result = await pauseBrowserTask();
+      store.setBrowserState(result);
+      return result;
+    } catch (error) {
+      store.addExecutionLog({ message: error.message || "Browser pause failed.", level: "error" });
+      throw error;
+    }
   }
 
   async function resumeBrowserFlow() {
-    const result = await resumeBrowserTask();
-    store.setBrowserState(result);
+    try {
+      const result = await resumeBrowserTask();
+      store.setBrowserState(result);
+      return result;
+    } catch (error) {
+      store.addExecutionLog({ message: error.message || "Browser resume failed.", level: "error" });
+      throw error;
+    }
   }
 
   async function stopBrowserFlow() {
-    const result = await stopBrowserTask();
-    store.setBrowserState(result);
+    try {
+      const result = await stopBrowserTask();
+      store.setBrowserState(result);
+      return result;
+    } catch (error) {
+      store.addExecutionLog({ message: error.message || "Browser stop failed.", level: "error" });
+      throw error;
+    }
   }
 
   async function closeBrowserFlow() {
-    const result = await closeBrowserTask();
-    store.setBrowserState(result);
+    try {
+      const result = await closeBrowserTask();
+      store.setBrowserState(result);
+      return result;
+    } catch (error) {
+      store.addExecutionLog({ message: error.message || "Browser close failed.", level: "error" });
+      throw error;
+    }
   }
 
   return {

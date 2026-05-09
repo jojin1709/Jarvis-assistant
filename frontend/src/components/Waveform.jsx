@@ -4,7 +4,7 @@ const bars = Array.from({ length: 28 }, (_, index) => index);
 
 export default function Waveform({ active }) {
   return (
-    <div className="flex h-16 items-center justify-center gap-1.5 rounded-2xl border border-line bg-white/[0.025] px-5">
+    <div className="flex h-12 items-center justify-center gap-1.5 rounded-2xl border border-line bg-white/[0.025] px-5">
       {bars.map((bar) => (
         <motion.span
           key={bar}

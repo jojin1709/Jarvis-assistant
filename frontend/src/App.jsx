@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { HashRouter, Route, Routes } from "react-router-dom";
 
 import AppShell from "./layouts/AppShell.jsx";
+import AppsPage from "./pages/AppsPage.jsx";
 import AutomationPage from "./pages/AutomationPage.jsx";
 import BrowserPage from "./pages/BrowserPage.jsx";
 import ChatPage from "./pages/ChatPage.jsx";
@@ -65,6 +66,7 @@ export default function App() {
           <Route path="chat" element={<ChatPage />} />
           <Route path="voice" element={<VoicePage />} />
           <Route path="files" element={<FilesPage />} />
+          <Route path="apps" element={<AppsPage />} />
           <Route path="automation" element={<AutomationPage />} />
           <Route path="browser" element={<BrowserPage />} />
           <Route path="settings" element={<SettingsPage />} />

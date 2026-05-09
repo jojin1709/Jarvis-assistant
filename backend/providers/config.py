@@ -15,6 +15,9 @@ DEFAULT_PROVIDER_CONFIG = {
         "openrouter": False,
         "local_llamacpp": True,
         "local_whisper": True,
+        "deepseek": False,
+        "nvidia": False,
+        "sarvam": False,
     },
     "models": {
         "groq": "llama-3.3-70b-versatile",
@@ -25,6 +28,9 @@ DEFAULT_PROVIDER_CONFIG = {
         "openrouter": "openai/gpt-4o-mini",
         "local_llamacpp": "local-model",
         "local_whisper": "base",
+        "deepseek": "deepseek-chat",
+        "nvidia": "meta/llama-3.1-70b-instruct",
+        "sarvam": "sarvam-m",
     },
     "routes": {
         "chat": "auto",

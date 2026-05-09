@@ -8,7 +8,8 @@ contextBridge.exposeInMainWorld("jxJarvis", {
   isMaximized: () => ipcRenderer.invoke("window:is-maximized"),
   getOpenAtLogin: () => ipcRenderer.invoke("system:get-open-at-login"),
   setOpenAtLogin: (enabled) => ipcRenderer.invoke("system:set-open-at-login", Boolean(enabled)),
-  chooseFolder: () => ipcRenderer.invoke("system:choose-folder"),
+  chooseFolder: (title) => ipcRenderer.invoke("system:choose-folder", title),
+  openExternal: (url) => ipcRenderer.invoke("system:open-external", url),
   onGlobalCommand: (callback) => {
     const listener = (_event, command) => callback(command);
     ipcRenderer.on("global:command", listener);
