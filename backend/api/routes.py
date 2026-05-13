@@ -1,21 +1,20 @@
+import json
 import re
+import time
 
-from flask import Blueprint, jsonify, request, send_file
+from flask import Blueprint, Response, current_app, jsonify, request, send_file, stream_with_context
 
 from api.ai_provider import ask_ai, ask_ai_code_project, provider_label
 from api.approvals import resolve_approval
 from api.browser_automation import browser_operator
 from api.context_awareness import context_snapshot
 from api.code_writer import (
-    consume_pending_website_brief,
     create_code_project,
     create_portfolio_project,
     extract_code_request,
     is_portfolio_request,
-    should_collect_website_brief,
-    start_website_brief,
 )
-from api.execution import add_log, execute_agent_task, execution_logs, preview_execution_plan
+from api.execution import add_log, execute_agent_task, execute_recorded_workflow, execution_logs, preview_execution_plan
 from api.file_ingest import save_and_analyze
 from api.language import (
     command_language_instruction,
@@ -42,10 +41,40 @@ from api.memory_storage import (
     remember_conversation,
     setup_memory_storage,
 )
+from api.wake_words import wake_command_from as parse_wake_command
+from agents.orchestrator import execute_autonomous_goal
 from automation.workflow_recorder import load_workflow, recorder_state, start_recording, stop_recording
+from automation.workflow_recorder import record_action
 from coding.agent import analyze_project, run_project_script
+from community.community_sync import community_state
+from context.context_manager import multimodal_context
+from core.autonomous_runtime import run_autonomous_runtime
+from core.cognitive_core import cognitive_core_status, prepare_goal
+from decision_engine.strategy_selector import choose_strategy
+from desktop.automation import desktop_automation
+from distributed.worker_manager import worker_status
+from docs.auto_doc_generator import generate_docs
+from environment.runtime_analyzer import runtime_analysis
+from events.event_bus import recent_events
+from explainability.action_trace import action_trace
+from legal.consent_manager import consent_state, update_consents
+from legal.policy_renderer import legal_documents
 from execution.control import cancel_execution, execution_control_state, pause_execution, resume_execution
 from execution.thinking import thinking_timeline
+from agents.message_bus import message_bus
+from knowledge.document_indexer import index_path
+from knowledge.semantic_search import search_knowledge
+from marketplace.skill_registry import marketplace_skills
+from marketplace.workflow_registry import marketplace_workflows
+from mobile_companion.api import mobile_state, push_mobile_notification
+from observability.telemetry import telemetry_snapshot
+from optimization.async_runtime_optimizer import async_runtime_plan
+from optimization.browser_pool import browser_pool_status
+from optimization.memory_optimizer import memory_pressure, optimize_memory
+from optimization.performance_manager import performance_status
+from platform_core.execution_loop import execute_platform_goal
+from platform_core.intelligence import build_intelligence_snapshot
+from platform_core.state_store import platform_history, platform_state
 from plugins.registry import install_local_plugin, list_plugins, set_plugin_enabled
 from providers.registry import (
     list_provider_status,
@@ -55,7 +84,26 @@ from providers.registry import (
     test_provider,
     update_provider_settings,
 )
+from providers.provider_router import browser_provider_status, open_provider_login, ask_with_orchestration
+from release_security.code_signing_manager import signing_command, signing_config
+from release_security.release_validator import validate_release_artifact
+from remote.distributed_runtime import distributed_runtime_status
+from research.article_parser import fetch_article
+from research.search_engine import web_search
+from research.summarizer import summarize_text
+from recovery.environment_restore import restore_readiness
+from sandbox.executor import run_in_docker
+from scheduler.task_scheduler import scheduler
+from self_improvement.engine import analyze_execution_quality
+from simulation.dry_run_engine import dry_run_goal
+from skills.registry import list_skills, select_skills
+from state_machine.workflow_state_manager import current_state
+from sync.sync_manager import configure_provider, connect_provider, provider_auth_url, restore_sync_backup, run_backup_sync, sync_status
+from telemetry.analytics_engine import analytics_snapshot, diagnostic_bundle, update_telemetry_config
 from vision.screenshot import capture_screen
+from workflows.workflow_engine import execute_workflow_graph
+from workflows.workflow_store import list_workflow_definitions, load_workflow_definition, save_workflow_definition
+from workspace.code_map import build_code_map
 from api.permissions import (
     evaluate_permission,
     guard_action,
@@ -81,8 +129,12 @@ from api.system_tasks import (
     search_youtube,
 )
 from app.config import settings
+from terminal.service import terminal_service
+from voice.microphone_manager import list_microphones, update_voice_preferences
+from voice.voice_orchestrator import push_to_talk
 from voice.recognizer import VoiceRecognizer
 from voice.speaker import EdgeSpeaker
+from voice.voice_runtime import voice_runtime
 
 router = Blueprint("api", __name__, url_prefix="/api")
 recognizer = VoiceRecognizer()
@@ -220,6 +272,47 @@ def agent_logs():
     return jsonify(logs=execution_logs())
 
 
+@router.get("/voice/runtime")
+def voice_runtime_state():
+    return jsonify(runtime=voice_runtime.status())
+
+
+@router.patch("/voice/runtime")
+def voice_runtime_update():
+    payload = request.get_json(silent=True) or {}
+    if "enabled" in payload:
+        result = voice_runtime.start() if bool(payload.get("enabled")) else voice_runtime.stop()
+    elif "muted" in payload:
+        result = voice_runtime.mute(bool(payload.get("muted")))
+    elif payload.get("mode"):
+        result = voice_runtime.set_mode(str(payload.get("mode")))
+    else:
+        update_voice_preferences(payload)
+        result = voice_runtime.status()
+    return jsonify(runtime=result)
+
+
+@router.get("/voice/microphones")
+def voice_microphones():
+    return jsonify(microphones=list_microphones())
+
+
+@router.post("/voice/push-to-talk")
+def voice_push_to_talk():
+    payload = request.get_json(silent=True) or {}
+    language_mode = normalize_language_mode(payload.get("language", "auto"))
+    speak_response = bool(payload.get("speak", True))
+    result = push_to_talk(run_text_command, language=language_mode, speak_response=speak_response, source=str(payload.get("source") or "api"))
+    if result.get("transcript"):
+        remember_conversation(str(result.get("transcript") or ""), str(result.get("response") or ""), {"source": "global-voice"})
+    return jsonify(result), 200 if result.get("status") not in {"error"} else 500
+
+
+@router.post("/voice/interrupt")
+def voice_interrupt():
+    return jsonify(runtime=voice_runtime.mark("idle", "Voice interaction interrupted by user."))
+
+
 @router.get("/agent/thinking")
 def agent_thinking():
     return jsonify(thinking=thinking_timeline(), control=execution_control_state())
@@ -252,9 +345,247 @@ def agent_cancel():
     return jsonify(cancel_execution())
 
 
+@router.post("/terminal/run")
+def terminal_run():
+    payload = request.get_json(silent=True) or {}
+    command = str(payload.get("command") or "").strip()
+    cwd = str(payload.get("cwd") or "").strip() or None
+    if not command:
+        return jsonify(error="Terminal command is required."), 400
+    job = terminal_service.enqueue(command, cwd=cwd)
+    add_log(f"Terminal job queued: {command}", "running")
+    return jsonify(job.as_dict())
+
+
+@router.get("/terminal/jobs")
+def terminal_jobs():
+    return jsonify(jobs=terminal_service.history())
+
+
+@router.post("/terminal/jobs/<job_id>/cancel")
+def terminal_cancel(job_id):
+    add_log(f"Terminal cancellation requested: {job_id}", "warning")
+    return jsonify(terminal_service.cancel(job_id))
+
+
 @router.get("/context")
 def context():
     return jsonify(context=context_snapshot())
+
+
+@router.post("/context/multimodal")
+def context_multimodal():
+    payload = request.get_json(silent=True) or {}
+    goal = str(payload.get("goal") or "").strip()
+    include_vision = bool(payload.get("includeVision", False))
+    return jsonify(multimodal_context(goal=goal, include_vision=include_vision))
+
+
+@router.get("/dashboard")
+def autonomous_dashboard():
+    return jsonify(
+        context=multimodal_context(),
+        telemetry=telemetry_snapshot(),
+        agents={"messages": message_bus.recent()},
+        workflows={"definitions": list_workflow_definitions(), "scheduler": scheduler.list()},
+        platform={"state": platform_state(), "history": platform_history(limit=40), "intelligence": build_intelligence_snapshot()},
+        core={"status": cognitive_core_status(), "executionState": current_state(), "events": recent_events(limit=40)},
+        production={
+            "sync": sync_status(),
+            "telemetry": analytics_snapshot(),
+            "performance": performance_status(),
+            "remote": distributed_runtime_status(),
+            "legal": consent_state(),
+        },
+    )
+
+
+@router.get("/core/status")
+def core_status():
+    return jsonify(core=cognitive_core_status(), runtime=runtime_analysis(), workers=worker_status(), recovery=restore_readiness())
+
+
+@router.post("/core/prepare")
+def core_prepare():
+    payload = request.get_json(silent=True) or {}
+    goal = str(payload.get("goal") or "").strip()
+    if not goal:
+        return jsonify(error="Goal is required."), 400
+    return jsonify(prepare_goal(goal, include_vision=bool(payload.get("includeVision", False)), dry_run=bool(payload.get("dryRun", False))))
+
+
+@router.post("/core/dry-run")
+def core_dry_run():
+    payload = request.get_json(silent=True) or {}
+    goal = str(payload.get("goal") or "").strip()
+    if not goal:
+        return jsonify(error="Goal is required."), 400
+    return jsonify(dry_run_goal(goal))
+
+
+@router.post("/platform/intelligence")
+def platform_intelligence():
+    payload = request.get_json(silent=True) or {}
+    return jsonify(build_intelligence_snapshot(str(payload.get("goal") or ""), include_vision=bool(payload.get("includeVision", False))))
+
+
+@router.post("/platform/execute")
+def platform_execute():
+    payload = request.get_json(silent=True) or {}
+    goal = str(payload.get("goal") or payload.get("text") or "").strip()
+    if not goal:
+        return jsonify(error="Goal is required."), 400
+    if bool(payload.get("dryRun", False)):
+        return jsonify(run_autonomous_runtime(goal, include_vision=bool(payload.get("includeVision", False)), dry_run=True))
+    return jsonify(execute_platform_goal(goal, include_vision=bool(payload.get("includeVision", False))))
+
+
+@router.get("/events")
+def events_state():
+    return jsonify(events=recent_events())
+
+
+@router.get("/explainability/action-trace")
+def explainability_action_trace():
+    return jsonify(trace=action_trace())
+
+
+@router.get("/skills")
+def internal_skills():
+    goal = str(request.args.get("goal") or "")
+    return jsonify(skills=list_skills(), selected=select_skills(goal) if goal else [])
+
+
+@router.get("/marketplace")
+def marketplace_state():
+    return jsonify(skills=marketplace_skills(), workflows=marketplace_workflows())
+
+
+@router.get("/distributed/workers")
+def distributed_workers():
+    return jsonify(worker_status())
+
+
+@router.get("/sync/status")
+def cloud_sync_status():
+    return jsonify(sync_status())
+
+
+@router.post("/sync/providers/<provider>/configure")
+def cloud_sync_configure(provider):
+    payload = request.get_json(silent=True) or {}
+    try:
+        return jsonify(configure_provider(provider, payload))
+    except ValueError as error:
+        return jsonify(error=str(error)), 400
+
+
+@router.post("/sync/providers/<provider>/auth-url")
+def cloud_sync_auth_url(provider):
+    payload = request.get_json(silent=True) or {}
+    try:
+        return jsonify(provider_auth_url(provider, str(payload.get("redirectUri") or ""), str(payload.get("clientId") or "")))
+    except ValueError as error:
+        return jsonify(error=str(error)), 400
+
+
+@router.post("/sync/providers/<provider>/connect")
+def cloud_sync_connect(provider):
+    payload = request.get_json(silent=True) or {}
+    try:
+        return jsonify(connect_provider(provider, payload))
+    except ValueError as error:
+        return jsonify(error=str(error)), 400
+
+
+@router.post("/sync/backup")
+def cloud_sync_backup():
+    payload = request.get_json(silent=True) or {}
+    try:
+        return jsonify(run_backup_sync(payload.get("provider"), payload.get("scope") if isinstance(payload.get("scope"), list) else None))
+    except Exception as error:
+        return jsonify(error=f"Sync backup failed: {error}"), 400
+
+
+@router.post("/sync/restore")
+def cloud_sync_restore():
+    payload = request.get_json(silent=True) or {}
+    path = str(payload.get("path") or "").strip()
+    if not path:
+        return jsonify(error="Backup path is required."), 400
+    try:
+        return jsonify(restore_sync_backup(path, str(payload.get("target") or "").strip() or None))
+    except Exception as error:
+        return jsonify(error=f"Sync restore failed: {error}"), 400
+
+
+@router.get("/telemetry")
+def telemetry_state():
+    return jsonify(analytics_snapshot())
+
+
+@router.patch("/telemetry")
+def telemetry_update():
+    payload = request.get_json(silent=True) or {}
+    return jsonify(update_telemetry_config(payload))
+
+
+@router.get("/telemetry/diagnostics")
+def telemetry_diagnostics():
+    return jsonify(diagnostic_bundle())
+
+
+@router.get("/legal")
+def legal_state():
+    return jsonify(consent=consent_state(), documents=legal_documents())
+
+
+@router.patch("/legal/consent")
+def legal_consent_update():
+    payload = request.get_json(silent=True) or {}
+    return jsonify(update_consents(payload))
+
+
+@router.get("/optimization/status")
+def optimization_status():
+    return jsonify(performance=performance_status(), memory=memory_pressure(), browserPool=browser_pool_status(), asyncRuntime=async_runtime_plan())
+
+
+@router.post("/optimization/memory")
+def optimization_memory():
+    return jsonify(optimize_memory())
+
+
+@router.get("/release/security")
+def release_security_state():
+    artifact = str(request.args.get("artifact") or "").strip()
+    result = {"signing": signing_config()}
+    if artifact:
+        result["artifact"] = validate_release_artifact(artifact)
+        result["signCommand"] = signing_command(artifact)
+    return jsonify(result)
+
+
+@router.post("/docs/generate")
+def docs_generate():
+    return jsonify(generate_docs(current_app))
+
+
+@router.get("/community")
+def community_platform_state():
+    return jsonify(community_state())
+
+
+@router.get("/remote/status")
+def remote_status():
+    return jsonify(distributed_runtime_status())
+
+
+@router.post("/decision/strategy")
+def decision_strategy():
+    payload = request.get_json(silent=True) or {}
+    goal = str(payload.get("goal") or "").strip()
+    return jsonify(choose_strategy(goal, payload.get("context") or {}))
 
 
 @router.post("/vision/screenshot")
@@ -263,6 +594,23 @@ def vision_screenshot():
     if not result.get("ok"):
         return jsonify(result), 500
     return jsonify(result)
+
+
+@router.post("/desktop/action")
+def desktop_action():
+    payload = request.get_json(silent=True) or {}
+    action = str(payload.get("action") or "").strip()
+    if action == "move":
+        result = desktop_automation.move_mouse(int(payload.get("x") or 0), int(payload.get("y") or 0), float(payload.get("duration") or 0.1))
+    elif action == "click":
+        result = desktop_automation.click(payload.get("x"), payload.get("y"))
+    elif action == "type":
+        result = desktop_automation.type_text(str(payload.get("text") or ""))
+    elif action == "hotkey":
+        result = desktop_automation.hotkey(list(payload.get("keys") or []))
+    else:
+        return jsonify(error="Unsupported desktop action."), 400
+    return jsonify(result.as_dict()), 200 if result.ok else 400
 
 
 @router.get("/plugins")
@@ -290,6 +638,7 @@ def providers_key_set():
     if not provider or not api_key:
         return jsonify(error="Provider and API key are required."), 400
     set_provider_key(provider, api_key)
+    update_provider_settings({"enabled": {provider: True}})
     add_log(f"AI provider key updated: {provider}", "success")
     return jsonify(list_provider_status())
 
@@ -319,6 +668,33 @@ def providers_test():
 @router.get("/providers/ollama/models")
 def providers_ollama_models():
     return jsonify(ollama_model_list())
+
+
+@router.get("/providers/orchestration")
+def providers_orchestration_status():
+    return jsonify(browser_provider_status())
+
+
+@router.post("/providers/orchestration/login/<provider_id>")
+def providers_orchestration_login(provider_id):
+    result = open_provider_login(provider_id)
+    status = 200 if result.ok else 400
+    return jsonify(result.__dict__), status
+
+
+@router.post("/providers/orchestration/test")
+def providers_orchestration_test():
+    payload = request.get_json(silent=True) or {}
+    provider = str(payload.get("provider") or "").strip() or None
+    prompt = str(payload.get("prompt") or "Reply with exactly: JX browser provider online").strip()
+    result = ask_with_orchestration(
+        [{"role": "user", "content": prompt}],
+        task_type="chat",
+        preferred_provider=provider,
+        multi_provider=bool(payload.get("multiProvider", False)),
+    )
+    status = 200 if result.ok else 400
+    return jsonify(result.__dict__), status
 
 
 @router.post("/plugins/install")
@@ -357,15 +733,49 @@ def workflow_replay(workflow_id):
     workflow = load_workflow(workflow_id)
     if not workflow:
         return jsonify(error="Workflow was not found."), 404
-    executable = [
-        action.get("label", "")
-        for action in workflow.get("actions", [])
-        if action.get("kind") == "agent_step" and action.get("label")
-    ]
-    if not executable:
-        return jsonify(error="This workflow has no replayable agent steps yet."), 400
     add_log(f"Replaying workflow: {workflow.get('name', workflow_id)}", "running")
-    return jsonify(execute_agent_task(", then ".join(executable)))
+    result = execute_recorded_workflow(workflow)
+    if result.get("response") == "This workflow has no replayable actions yet.":
+        return jsonify(error=result["response"]), 400
+    return jsonify(result)
+
+
+@router.get("/workflows/graphs")
+def workflow_graphs():
+    return jsonify(workflows=list_workflow_definitions())
+
+
+@router.post("/workflows/graphs")
+def workflow_graph_save():
+    payload = request.get_json(silent=True) or {}
+    result = save_workflow_definition(payload)
+    return jsonify(result), 200 if result.get("ok") else 400
+
+
+@router.post("/workflows/graphs/<workflow_id>/run")
+def workflow_graph_run(workflow_id):
+    workflow = load_workflow_definition(workflow_id)
+    if not workflow:
+        return jsonify(error="Workflow was not found."), 404
+    return jsonify(execute_workflow_graph(workflow))
+
+
+@router.get("/scheduler")
+def scheduler_state():
+    scheduler.start()
+    return jsonify(scheduler.list())
+
+
+@router.post("/scheduler")
+def scheduler_upsert():
+    payload = request.get_json(silent=True) or {}
+    scheduler.start()
+    return jsonify(task=scheduler.upsert(payload), scheduler=scheduler.list())
+
+
+@router.delete("/scheduler/<task_id>")
+def scheduler_delete(task_id):
+    return jsonify(ok=scheduler.remove(task_id), scheduler=scheduler.list())
 
 
 @router.get("/coding/analyze")
@@ -435,7 +845,7 @@ def agent_execute():
     def run() -> str:
         nonlocal result
         try:
-            result = execute_agent_task(text)
+            result = execute_platform_goal(text)["result"] if _should_use_autonomous_orchestrator(text) else execute_agent_task(text)
         except RuntimeError as error:
             result = {"response": str(error), "plan": [], "logs": execution_logs()}
             add_log(str(error), "warning")
@@ -446,6 +856,71 @@ def agent_execute():
         result = {"response": guarded, "plan": [], "logs": execution_logs()}
     set_state("online", "Awaiting next command.")
     return jsonify(result)
+
+
+@router.get("/workspace/code-map")
+def workspace_code_map():
+    path = request.args.get("path") or "."
+    return jsonify(build_code_map(path))
+
+
+@router.post("/knowledge/index")
+def knowledge_index():
+    payload = request.get_json(silent=True) or {}
+    path = str(payload.get("path") or ".")
+    return jsonify(index_path(path, source=str(payload.get("source") or "workspace")))
+
+
+@router.get("/knowledge/search")
+def knowledge_search():
+    query = str(request.args.get("q") or "").strip()
+    if not query:
+        return jsonify(error="Query is required."), 400
+    return jsonify(search_knowledge(query, limit=int(request.args.get("limit") or 8)))
+
+
+@router.get("/research/search")
+def research_search():
+    query = str(request.args.get("q") or "").strip()
+    if not query:
+        return jsonify(error="Query is required."), 400
+    return jsonify(web_search(query))
+
+
+@router.post("/research/summarize")
+def research_summarize():
+    payload = request.get_json(silent=True) or {}
+    if payload.get("url"):
+        article = fetch_article(str(payload.get("url")))
+        return jsonify({**article, "summary": summarize_text(article.get("text", ""))})
+    return jsonify(summarize_text(str(payload.get("text") or "")))
+
+
+@router.post("/sandbox/run")
+def sandbox_run():
+    payload = request.get_json(silent=True) or {}
+    return jsonify(run_in_docker(str(payload.get("command") or ""), payload.get("workspace") or ".", image=str(payload.get("image") or "python:3.11-slim")))
+
+
+@router.get("/self-improvement")
+def self_improvement_state():
+    return jsonify(analyze_execution_quality())
+
+
+@router.get("/agents/messages")
+def agent_messages():
+    return jsonify(messages=message_bus.recent())
+
+
+@router.get("/mobile/state")
+def mobile_companion_state():
+    return jsonify(mobile_state())
+
+
+@router.post("/mobile/notify")
+def mobile_notify():
+    payload = request.get_json(silent=True) or {}
+    return jsonify(notification=push_mobile_notification(str(payload.get("title") or "Jarvis"), str(payload.get("body") or ""), str(payload.get("level") or "info"), payload.get("action") or {}))
 
 
 def startup_greeting() -> str:
@@ -488,6 +963,10 @@ def wake_command_from(text: str) -> tuple[bool, str]:
         "ok jarvis",
         "okay jarvis",
         "jarvis",
+        "ഹേ ജാർവിസ്",
+        "ഹായ് ജാർവിസ്",
+        "ജാർവിസ്",
+        "ജാര്‍വിസ്",
         "ഹേ ജാർവിസ്",
         "ഹായ് ജാർവിസ്",
         "ജാർവിസ്",
@@ -549,15 +1028,139 @@ def _looks_like_simple_open_target(normalized: str) -> bool:
     }
 
 
+def _conversation_history_context(history: list[dict] | None) -> str:
+    if not isinstance(history, list):
+        return ""
+    lines: list[str] = []
+    for item in history[-8:]:
+        if not isinstance(item, dict):
+            continue
+        transcript = re.sub(r"\s+", " ", str(item.get("transcript") or "")).strip()
+        response = re.sub(r"\s+", " ", str(item.get("response") or "")).strip()
+        if not transcript or response.lower() in {"thinking...", "planning and executing..."}:
+            continue
+        lines.append(f"User: {transcript}")
+        if response:
+            lines.append(f"Jarvis: {response}")
+    return "\n".join(lines)
+
+
+def _is_short_follow_up(text: str) -> bool:
+    normalized = " ".join(text.lower().strip().split())
+    return normalized in {
+        "ok",
+        "okay",
+        "ok do it",
+        "okay do it",
+        "do it",
+        "yes",
+        "yes do it",
+        "sure",
+        "go ahead",
+        "please do",
+        "proceed",
+        "continue",
+    }
+
+
+def _extract_weather_location(text: str) -> str:
+    patterns = (
+        r"\bweather\s+(?:in|for|at)\s+([a-zA-Z][a-zA-Z\s,.-]{1,60})",
+        r"\bweather search for\s+([a-zA-Z][a-zA-Z\s,.-]{1,60})",
+    )
+    for pattern in patterns:
+        match = re.search(pattern, text, flags=re.IGNORECASE)
+        if match:
+            location = re.sub(r"\s+", " ", match.group(1)).strip(" .,-")
+            location = re.split(r"\b(?:i can|i cannot|for you|please|now)\b", location, maxsplit=1, flags=re.IGNORECASE)[0]
+            return location.strip(" .,-")
+    return ""
+
+
+def extract_weather_search(text: str) -> str | None:
+    normalized = " ".join(text.lower().strip().split())
+    if "weather" not in normalized:
+        return None
+
+    blocked_contexts = (
+        "weather app",
+        "weather application",
+    )
+    if any(context in normalized for context in blocked_contexts) and not any(verb in normalized for verb in ("open", "launch", "start")):
+        return None
+
+    location = _extract_weather_location(text)
+    if location:
+        return f"weather in {location}"
+
+    if re.search(r"\b(?:tell me|show me|check|what is|what's|current|today|now|search|google|find|look up|lookup|open|launch|start)\b", normalized):
+        return "current weather"
+
+    if normalized in {"weather", "the weather"}:
+        return "current weather"
+
+    return None
+
+
+def resolve_contextual_follow_up(command_text: str, history: list[dict] | None) -> str:
+    if not _is_short_follow_up(command_text) or not isinstance(history, list) or not history:
+        return command_text
+
+    recent_items = [item for item in history[-3:] if isinstance(item, dict)]
+    recent_text = " ".join(
+        str(value or "")
+        for item in recent_items
+        for value in (item.get("transcript"), item.get("response"))
+    )
+    lowered = recent_text.lower()
+
+    if "weather" in lowered and (
+        "open a browser" in lowered
+        or "weather search" in lowered
+        or "search" in lowered
+        or "weather application" in lowered
+        or "weather app" in lowered
+    ):
+        location = ""
+        for item in reversed(recent_items):
+            location = _extract_weather_location(str(item.get("transcript") or "")) or _extract_weather_location(str(item.get("response") or ""))
+            if location:
+                break
+        return f"search Google for weather in {location}" if location else "search Google for current weather"
+
+    search_match = re.search(r"\bsearch(?: google)? for\s+([^.;]+)", recent_text, flags=re.IGNORECASE)
+    if search_match and ("open a browser" in lowered or "search" in lowered):
+        query = re.sub(r"\s+", " ", search_match.group(1)).strip(" .,-")
+        if query:
+            return f"search Google for {query}"
+
+    return command_text
+
+
 def run_text_command(
     text: str,
     speak_response: bool = True,
     speak_limit: int | None = None,
     language_mode: str = "auto",
+    conversation_history: list[dict] | None = None,
 ) -> dict[str, str | None]:
     language = resolve_language(text, language_mode)
     command_text = normalize_command_to_english(text, language)
+    command_text = resolve_contextual_follow_up(command_text, conversation_history)
     add_log(f"Understanding command: {command_text}", "info")
+    record_action("text_command", command_text, {"source": "assistant.chat"})
+
+    if _should_use_autonomous_orchestrator(command_text):
+        set_state("executing", "Running autonomous multi-agent workflow.")
+        result = execute_autonomous_goal(command_text)
+        for item in result.get("logs", [])[-20:]:
+            add_log(str(item.get("message") or ""), str(item.get("level") or "info"))
+        return finish_response(
+            str(result.get("response") or "Autonomous workflow complete."),
+            language,
+            speak_response,
+            speak_limit=900,
+        )
 
     approval_response = resolve_approval(command_text)
     if approval_response:
@@ -569,19 +1172,8 @@ def run_text_command(
         set_state("memory", "Memory updated.")
         return finish_response(memory_response, language, speak_response, speak_limit=450)
 
-    brief_code_request = consume_pending_website_brief(command_text)
-    if brief_code_request:
-        set_state("coding", "Generating custom website workspace and opening VS Code.")
-        model_response = ask_ai_code_project(brief_code_request)
-        response = create_code_project(brief_code_request, model_response)
-        return finish_response(response, language, speak_response, speak_limit=450)
-
     code_request = extract_code_request(command_text)
     if code_request:
-        if should_collect_website_brief(code_request):
-            set_state("thinking", "Collecting website options before generating code.")
-            response = start_website_brief(code_request)
-            return finish_response(response, language, speak_response, speak_limit=900)
         set_state("coding", "Generating code workspace and opening VS Code.")
         if is_portfolio_request(code_request):
             response = create_portfolio_project(code_request)
@@ -608,6 +1200,13 @@ def run_text_command(
         add_log(open_target_response, "success" if "successfully" in open_target_response.lower() or "opened" in open_target_response.lower() else "error")
         return finish_response(open_target_response, language, speak_response, speak_limit=240)
 
+    weather_query = extract_weather_search(command_text)
+    if weather_query:
+        set_state("executing", f"Searching weather in Chrome: {weather_query}.")
+        response = open_google_search(weather_query)
+        add_log(response, "success" if "searching google" in response.lower() or "opened" in response.lower() else "error")
+        return finish_response(response, language, speak_response, speak_limit=240)
+
     youtube_query = extract_youtube_search(command_text)
     if youtube_query:
         set_state("executing", f"Visually searching YouTube for: {youtube_query}.")
@@ -616,9 +1215,10 @@ def run_text_command(
 
     google_query = extract_google_search(command_text)
     if google_query:
-        set_state("executing", f"Visually searching Google for: {google_query}.")
-        response = browser_operator.run_async(f"search Google for {google_query}")["response"]
-        return finish_response(response, language, speak_response)
+        set_state("executing", f"Searching Google in Chrome: {google_query}.")
+        response = open_google_search(google_query)
+        add_log(response, "success" if "searching google" in response.lower() or "opened" in response.lower() else "error")
+        return finish_response(response, language, speak_response, speak_limit=240)
 
     browser_command = visual_browser_command(command_text)
     if browser_command:
@@ -644,13 +1244,42 @@ def run_text_command(
     user_name = str(profile.get("user_name") or user_display_name(settings.owner_name))
     personality = str(profile.get("personality") or "professional")
     profile_line = f"Current user name: {user_name}"
+    history_context = _conversation_history_context(conversation_history)
+    history_block = (
+        ""
+        if not history_context
+        else f"Recent messages in this same chat thread. Use this to understand follow-ups and pronouns:\n{history_context}\n\n"
+    )
     prompt = (
-        f"{profile_line}\nResponse style: {personality}\n\nUser command:\n{text}"
+        f"{profile_line}\nResponse style: {personality}\n\n{history_block}User command:\n{text}"
         if not memories
-        else f"{profile_line}\nResponse style: {personality}\nSaved local memories about the current user:\n{memories}\n\nUser command:\n{text}"
+        else f"{profile_line}\nResponse style: {personality}\nSaved local memories about the current user:\n{memories}\n\n{history_block}User command:\n{text}"
     )
     response = ask_ai(prompt, language_instruction=command_language_instruction(language))
     return finish_response(response, language, speak_response, speak_limit=speak_limit)
+
+
+def _should_use_autonomous_orchestrator(text: str) -> bool:
+    normalized = " ".join(text.lower().strip().split())
+    full_stack = any(term in normalized for term in ("mern", "full stack", "full-stack", "react and node", "express", "mongodb"))
+    bug_bounty = any(term in normalized for term in ("bug bounty", "find bugs", "recon", "vulnerability scan", "scan target"))
+    platform_terms = any(
+        term in normalized
+        for term in (
+            "workflow",
+            "desktop",
+            "screen",
+            "screenshot",
+            "docker",
+            "deploy",
+            "research",
+            "codebase",
+            "architecture",
+            "refactor",
+            "debug project",
+        )
+    )
+    return full_stack or bug_bounty or platform_terms
 
 
 @router.post("/assistant/chat")
@@ -659,11 +1288,19 @@ def chat():
     text = str(payload.get("text", "")).strip()
     speak_response = bool(payload.get("speak", True))
     language_mode = normalize_language_mode(payload.get("language", "auto"))
+    conversation_history = payload.get("history")
+    if not isinstance(conversation_history, list):
+        conversation_history = []
 
     if not text:
         return jsonify(error="Text command is required."), 400
 
-    result = run_text_command(text, speak_response=speak_response, language_mode=language_mode)
+    result = run_text_command(
+        text,
+        speak_response=speak_response,
+        language_mode=language_mode,
+        conversation_history=conversation_history,
+    )
     remember_conversation(text, str(result["response"] or ""), {"source": "chat"})
     return jsonify(
         transcript=text,
@@ -671,6 +1308,41 @@ def chat():
         audio_file=result["audio_file"],
         status="complete",
     )
+
+
+@router.post("/assistant/chat/stream")
+def chat_stream():
+    payload = request.get_json(silent=True) or {}
+    text = str(payload.get("text", "")).strip()
+    language_mode = normalize_language_mode(payload.get("language", "auto"))
+    conversation_history = payload.get("history")
+    if not isinstance(conversation_history, list):
+        conversation_history = []
+
+    if not text:
+        return jsonify(error="Text command is required."), 400
+
+    def emit(event: dict) -> str:
+        return json.dumps(event, ensure_ascii=False) + "\n"
+
+    @stream_with_context
+    def generate():
+        yield emit({"type": "status", "message": "Thinking..."})
+        result = run_text_command(
+            text,
+            speak_response=False,
+            language_mode=language_mode,
+            conversation_history=conversation_history,
+        )
+        response = str(result.get("response") or "")
+        for chunk in re.findall(r".{1,96}(?:\s+|$)", response, flags=re.DOTALL):
+            if chunk:
+                yield emit({"type": "chunk", "text": chunk})
+                time.sleep(0.015)
+        remember_conversation(text, response, {"source": "chat-stream"})
+        yield emit({"type": "done", "response": response, "audio_file": None, "status": "complete"})
+
+    return Response(generate(), mimetype="application/x-ndjson")
 
 
 @router.post("/assistant/listen")
@@ -707,7 +1379,7 @@ def wake_listen():
 
     set_state("wake", "Wake word monitor active.")
     transcript = recognizer.listen_once(duration=duration, language_mode=language_mode)
-    awakened, command = wake_command_from(transcript)
+    awakened, command = parse_wake_command(transcript)
 
     if not awakened:
         set_state("online", "Wake word monitor standing by.")
@@ -717,6 +1389,8 @@ def wake_listen():
     if not command:
         language = resolve_language(transcript, language_mode)
         response = "അതെ, ഞാൻ കേൾക്കുന്നു." if language == "ml" else f"Yes, {user_display_name(settings.owner_name)}. I am listening."
+        if language == "ml":
+            response = "അതെ, ഞാൻ കേൾക്കുന്നു."
         set_state("speaking", "Wake word acknowledged.")
         try:
             audio_file = str(speaker.speak(response, language=language))

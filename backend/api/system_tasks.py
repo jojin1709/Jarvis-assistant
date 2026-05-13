@@ -17,6 +17,7 @@ except ImportError:  # pragma: no cover - non-Windows fallback
     winreg = None
 
 from api.approvals import request_approval
+from api.memory_storage import configured_memory_root
 from api.permissions import accessible_roots, app_is_allowed, evaluate_permission, guard_action, permissions_state
 from app.config import settings
 from api.code_writer import open_code_workspace, open_latest_code_project, test_latest_code_project
@@ -1278,8 +1279,16 @@ def extract_google_search(text: str) -> str | None:
 
 def open_google_search(query: str) -> str:
     def run() -> str:
-        webbrowser.open(f"https://www.google.com/search?q={quote_plus(query)}")
-        return f"Searching Google for {query}."
+        url = f"https://www.google.com/search?q={quote_plus(query)}"
+        chrome = _resolve_app_command(APP_TARGETS["chrome"])
+        if chrome:
+            try:
+                _run_detached([*chrome, "--new-tab", url])
+            except OSError as error:
+                return f"Could not search Google in Chrome: {error}"
+            return f"Searching Google in Chrome for {query}."
+
+        return open_website(url, f"Google search for {query}")
 
     return guard_action("internet.search", f"search Google for {query}", run)
 
@@ -1288,7 +1297,13 @@ def search_user_files(query: str) -> str:
     if not settings.system_tasks_enabled:
         return "System task access is disabled in configuration."
 
-    roots = accessible_roots([Path.home() / name for name in ("Desktop", "Documents", "Downloads", "Videos", "Pictures")])
+    roots = accessible_roots(
+        [
+            Path.home() / name
+            for name in ("Desktop", "Documents", "Downloads", "Videos", "Pictures")
+        ]
+        + [settings.uploads_dir, configured_memory_root()]
+    )
     if not roots:
         return "File search is blocked by Security & Permissions."
     matches: list[Path] = []
@@ -1308,7 +1323,7 @@ def search_user_files(query: str) -> str:
             break
 
     if not matches:
-        return f"No matching files found for '{query}' in Desktop, Documents, Downloads, Videos, or Pictures."
+        return f"No matching files found for '{query}' in Desktop, Documents, Downloads, Videos, Pictures, uploads, or Jarvis memory."
 
     lines = [f"Found {len(matches)} matching file(s) for '{query}':"]
     lines.extend(str(path) for path in matches)

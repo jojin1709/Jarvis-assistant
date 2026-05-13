@@ -4,6 +4,7 @@ from importlib import import_module
 
 from app.config import settings
 from providers.config import load_provider_config, save_provider_config
+from providers.groq_limits import groq_limit_snapshot
 from providers.ollama_provider import list_models
 from providers.secure_store import delete_secret, get_secret, has_secret, masked_secret, save_secret
 
@@ -28,6 +29,8 @@ PROVIDERS = {
     "claude": ProviderSpec("claude", "Claude", "providers.claude_provider", "ANTHROPIC_API_KEY"),
     "ollama": ProviderSpec("ollama", "Ollama", "providers.ollama_provider", "", kind="local", requires_key=False),
     "gemini": ProviderSpec("gemini", "Gemini", "providers.gemini_provider", "GEMINI_API_KEY", supports_vision=True),
+    "g4f": ProviderSpec("g4f", "G4F", "providers.openai_provider", "G4F_API_KEY"),
+    "pollinations": ProviderSpec("pollinations", "Pollinations", "providers.openai_provider", "POLLINATIONS_API_KEY"),
     "openrouter": ProviderSpec("openrouter", "OpenRouter", "providers.openrouter_provider", "OPENROUTER_API_KEY"),
     "local_llamacpp": ProviderSpec("local_llamacpp", "llama.cpp", "providers.local_provider", "", kind="local", requires_key=False),
     "local_whisper": ProviderSpec("local_whisper", "Local Whisper", "", "", kind="local", supports_chat=False, supports_code=False, supports_voice=True, requires_key=False),
@@ -40,6 +43,98 @@ BASE_URLS = {
     "deepseek": settings.deepseek_base_url,
     "nvidia": settings.nvidia_base_url,
     "sarvam": f"{settings.sarvam_base_url.rstrip('/')}/v1",
+    "g4f": settings.g4f_base_url,
+    "pollinations": settings.pollinations_base_url,
+}
+
+MODEL_OPTIONS = {
+    "groq": [
+        "groq/compound",
+        "groq/compound-mini",
+        "llama-3.1-8b-instant",
+        "llama-3.3-70b-versatile",
+        "meta-llama/llama-4-scout-17b-16e-instruct",
+        "meta-llama/llama-prompt-guard-2-22m",
+        "meta-llama/llama-prompt-guard-2-86m",
+        "openai/gpt-oss-120b",
+        "openai/gpt-oss-20b",
+        "openai/gpt-oss-safeguard-20b",
+        "qwen/qwen3-32b",
+        "whisper-large-v3",
+        "whisper-large-v3-turbo",
+        "canopylabs/orpheus-arabic-saudi",
+        "canopylabs/orpheus-v1-english",
+    ],
+    "gemini": [
+        "gemini-2.5-pro",
+        "gemini-2.5-flash",
+        "gemini-2.5-flash-lite",
+        "gemini-2.0-flash",
+        "gemini-2.0-flash-lite",
+    ],
+    "g4f": [
+        "gpt-4o",
+        "gpt-4o-mini",
+        "gpt-oss-120b",
+        "gpt-oss-20b",
+        "gemini-2.5-flash",
+        "llama-3.3-70b-versatile",
+        "qwen/qwen3-32b",
+        "grok-4-fast-non-reasoning",
+    ],
+    "pollinations": [
+        "openai",
+    ],
+}
+
+TASK_MODEL_PLAN = {
+    "groq": {
+        "chat": ["llama-3.1-8b-instant", "groq/compound-mini", "qwen/qwen3-32b"],
+        "coding": [
+            "meta-llama/llama-4-scout-17b-16e-instruct",
+            "qwen/qwen3-32b",
+            "openai/gpt-oss-120b",
+            "openai/gpt-oss-20b",
+            "groq/compound",
+            "groq/compound-mini",
+            "llama-3.3-70b-versatile",
+            "llama-3.1-8b-instant",
+        ],
+        "safety": ["meta-llama/llama-prompt-guard-2-86m", "meta-llama/llama-prompt-guard-2-22m"],
+        "speech_to_text": ["whisper-large-v3-turbo", "whisper-large-v3"],
+        "text_to_speech": ["canopylabs/orpheus-v1-english", "canopylabs/orpheus-arabic-saudi"],
+    },
+    "gemini": {
+        "chat": ["gemini-2.5-flash", "gemini-2.5-flash-lite"],
+        "coding": ["gemini-2.5-pro", "gemini-2.5-flash", "gemini-2.5-flash-lite"],
+        "vision": ["gemini-2.5-flash", "gemini-2.5-pro"],
+        "automation": ["gemini-2.5-flash", "gemini-2.5-flash-lite"],
+    },
+    "g4f": {
+        "chat": ["gpt-4o-mini", "gpt-4o"],
+        "coding": ["gpt-4o", "gpt-oss-120b", "gpt-oss-20b"],
+        "automation": ["gpt-4o-mini", "gpt-4o"],
+    },
+    "pollinations": {
+        "chat": ["openai"],
+        "coding": ["openai"],
+        "automation": ["openai"],
+    },
+}
+
+ENDPOINT_OPTIONS = {
+    "g4f": [
+        "https://g4f.space/v1",
+        "https://g4f.dev/v1",
+        "https://g4f.space/api/auto",
+        "https://g4f.space/api/groq",
+        "https://g4f.space/api/gemini",
+        "https://g4f.space/api/nvidia",
+        "http://localhost:1337/v1",
+    ],
+    "pollinations": [
+        "https://gen.pollinations.ai/v1",
+    ],
 }
 
 
@@ -52,6 +147,7 @@ def provider_key(provider: str) -> str:
 
 def list_provider_status() -> dict:
     config = load_provider_config()
+    groq_limits = groq_limit_snapshot()
     cards = []
     ollama_models = []
     ollama_latency = None
@@ -73,6 +169,11 @@ def list_provider_status() -> dict:
                 "maskedKey": masked_secret(provider_id) if spec.requires_key else "",
                 "requiresKey": spec.requires_key,
                 "model": config["models"].get(provider_id, ""),
+                "modelOptions": MODEL_OPTIONS.get(provider_id, []),
+                "taskModelPlan": TASK_MODEL_PLAN.get(provider_id, {}),
+                "endpoint": config.get("endpoints", {}).get(provider_id, ""),
+                "endpointOptions": ENDPOINT_OPTIONS.get(provider_id, []),
+                "rateLimits": groq_limits if provider_id == "groq" else {},
                 "supports": {
                     "chat": spec.supports_chat,
                     "code": spec.supports_code,
@@ -113,7 +214,7 @@ def resolve_provider(task_type: str = "chat") -> str:
     candidates.extend(
         ["ollama", "local_llamacpp"]
         if offline
-        else ["openai", "claude", "groq", "gemini", "openrouter", "deepseek", "nvidia", "sarvam", "ollama", "local_llamacpp"]
+        else ["gemini", "groq", "openai", "claude", "openrouter", "deepseek", "nvidia", "sarvam", "ollama", "local_llamacpp", "pollinations", "g4f"]
     )
     for provider in candidates:
         if _provider_ready(provider, task_type, config):
@@ -121,12 +222,12 @@ def resolve_provider(task_type: str = "chat") -> str:
     raise RuntimeError("No configured AI provider is available. Add a key or enable Ollama/local models.")
 
 
-def chat_with_provider(provider: str, messages: list[dict[str, str]], temperature: float, max_tokens: int, response_format=None) -> tuple[str, float]:
+def chat_with_provider(provider: str, messages: list[dict[str, str]], temperature: float, max_tokens: int, response_format=None, model_override: str | None = None) -> tuple[str, float]:
     config = load_provider_config()
     spec = PROVIDERS.get(provider)
     if not spec or not spec.supports_chat:
         raise RuntimeError(f"{provider} does not support chat.")
-    model = config["models"].get(provider) or _default_model(provider)
+    model = model_override or config["models"].get(provider) or _default_model(provider)
     key = provider_key(provider)
     module = import_module(spec.module)
     kwargs = {}
@@ -136,6 +237,10 @@ def chat_with_provider(provider: str, messages: list[dict[str, str]], temperatur
         kwargs["base_url"] = config["endpoints"].get("ollama") or settings.ollama_base_url
     if provider == "local_llamacpp":
         kwargs["base_url"] = config["endpoints"].get("local_llamacpp") or "http://127.0.0.1:8080/v1"
+    if provider == "g4f":
+        kwargs["base_url"] = config["endpoints"].get("g4f") or settings.g4f_base_url
+    if provider == "pollinations":
+        kwargs["base_url"] = config["endpoints"].get("pollinations") or settings.pollinations_base_url
     return module.chat(messages, key, model, temperature, max_tokens, response_format=response_format, **kwargs)
 
 

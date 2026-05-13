@@ -1,14 +1,15 @@
-import { Command, SendHorizontal } from "lucide-react";
+import { Command, Search, SendHorizontal } from "lucide-react";
 import { useState } from "react";
 
 export default function CommandConsole({ onSend, disabled }) {
   const [text, setText] = useState("");
+  const [googleMode, setGoogleMode] = useState(false);
 
   function submit(event) {
     event.preventDefault();
     const trimmed = text.trim();
     if (!trimmed) return;
-    Promise.resolve(onSend(trimmed)).catch(() => {});
+    Promise.resolve(onSend(trimmed, { google: googleMode })).catch(() => {});
     setText("");
   }
 
@@ -22,8 +23,23 @@ export default function CommandConsole({ onSend, disabled }) {
         onChange={(event) => setText(event.target.value)}
         disabled={disabled}
         className="min-w-0 flex-1 bg-transparent px-1 py-2 text-sm text-textPrimary outline-none placeholder:text-textSecondary/65"
-        placeholder="Ask Jarvis to open apps, search, write, remember, or manage files..."
+        placeholder={googleMode ? "Search Google in Chrome..." : "Ask Jarvis to open apps, search, write, remember, or manage files..."}
       />
+      <button
+        type="button"
+        disabled={disabled}
+        onClick={() => setGoogleMode((active) => !active)}
+        className={`inline-flex h-10 shrink-0 items-center gap-1 rounded-2xl border px-3 text-xs font-semibold transition disabled:cursor-not-allowed disabled:opacity-40 ${
+          googleMode
+            ? "border-cyanCore/50 bg-cyanCore/15 text-cyanCore"
+            : "border-line bg-white/[0.035] text-textSecondary hover:border-white/20 hover:text-textPrimary"
+        }`}
+        title="Toggle Google search mode"
+        aria-pressed={googleMode}
+      >
+        <Search size={14} />
+        GG
+      </button>
       <button
         type="submit"
         disabled={disabled || !text.trim()}

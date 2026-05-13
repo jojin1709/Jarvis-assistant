@@ -65,6 +65,16 @@ backend/runtime/*.json
 !backend/runtime/browser/.gitkeep
 !backend/runtime/vision/.gitkeep
 
+# Persistent browser profiles preserve cookies/login sessions locally.
+backend/profiles/*
+!backend/profiles/.gitkeep
+!backend/profiles/chatgpt/
+!backend/profiles/chatgpt/.gitkeep
+!backend/profiles/claude/
+!backend/profiles/claude/.gitkeep
+!backend/profiles/gemini/
+!backend/profiles/gemini/.gitkeep
+
 # Local memory, databases, model caches, and private user data
 JarvisMemory/
 Jarvis Brain/

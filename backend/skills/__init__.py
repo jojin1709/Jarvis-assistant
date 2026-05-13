@@ -1,0 +1,1 @@
+"""Internal reusable skill architecture."""

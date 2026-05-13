@@ -37,7 +37,7 @@ def command_language_instruction(language: str) -> str:
             "The user spoke Malayalam. Reply in natural Malayalam, but keep app names, file paths, "
             "commands, and code-related terms readable."
         )
-    return "Reply in English."
+    return "Reply only in English. Do not answer in Malayalam unless the language mode is Malayalam."
 
 
 def normalize_command_to_english(text: str, language: str) -> str:
@@ -67,7 +67,13 @@ def normalize_command_to_english(text: str, language: str) -> str:
 
 
 def localize_response(text: str, language: str) -> str:
-    if language != "ml" or not text.strip():
+    if not text.strip():
+        return text
+
+    if language == "en":
+        return _translate_to_english(text) if MALAYALAM_RE.search(text) else text
+
+    if language != "ml":
         return text
 
     if not _has_ai_key():
@@ -84,6 +90,31 @@ def localize_response(text: str, language: str) -> str:
                         "Translate this assistant response into natural Malayalam. "
                         "Keep file paths, URLs, app names, confirmation tokens, code identifiers, and English commands unchanged. "
                         "Keep it concise. Return only the translated response."
+                    ),
+                },
+                {"role": "user", "content": text},
+            ],
+        )
+        return translated.strip() or text
+    except Exception:
+        return text
+
+
+def _translate_to_english(text: str) -> str:
+    if not _has_ai_key():
+        return text
+
+    try:
+        translated = chat_ai_messages(
+            temperature=0,
+            max_tokens=450,
+            messages=[
+                {
+                    "role": "system",
+                    "content": (
+                        "Translate this assistant response into concise English. "
+                        "Keep file paths, URLs, app names, confirmation tokens, code identifiers, and commands unchanged. "
+                        "Return only the translated response."
                     ),
                 },
                 {"role": "user", "content": text},

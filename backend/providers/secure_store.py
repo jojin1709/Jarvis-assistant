@@ -1,4 +1,5 @@
 import base64
+import binascii
 import ctypes
 import json
 import os
@@ -34,7 +35,10 @@ def get_secret(name: str) -> str:
     protected = data.get(_clean(name))
     if not protected:
         return ""
-    return _unprotect(protected)
+    try:
+        return _unprotect(protected)
+    except (OSError, ValueError, TypeError, UnicodeDecodeError, binascii.Error):
+        return ""
 
 
 def has_secret(name: str) -> bool:
@@ -61,6 +65,8 @@ def _protect(value: str) -> dict[str, str]:
 
 
 def _unprotect(payload: dict[str, str]) -> str:
+    if not isinstance(payload, dict):
+        return ""
     scheme = payload.get("scheme")
     encoded = payload.get("value") or ""
     if not encoded:

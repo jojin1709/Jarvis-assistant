@@ -18,4 +18,9 @@ def run_browser_command(text: str) -> str | None:
         result = browser_operator.run_async(text)
         return result["response"]
 
+    simple_web_targets = ("open google", "open youtube", "open github", "open stack overflow", "open stackoverflow", "open linkedin", "open reddit")
+    if lowered in simple_web_targets or lowered.startswith(simple_web_targets):
+        result = browser_operator.run_async(text)
+        return result["response"]
+
     return None

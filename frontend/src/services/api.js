@@ -49,15 +49,73 @@ export function wakeListen(duration = 3.2, language = "auto") {
   });
 }
 
+export function getVoiceRuntime() {
+  return request("/api/voice/runtime");
+}
+
+export function updateVoiceRuntime(patch) {
+  return request("/api/voice/runtime", {
+    method: "PATCH",
+    body: JSON.stringify(patch),
+  });
+}
+
+export function pushToTalk(language = "auto", speak = true) {
+  return request("/api/voice/push-to-talk", {
+    method: "POST",
+    body: JSON.stringify({ language, speak, source: "renderer" }),
+  });
+}
+
 export function greetCommand() {
   return request("/api/assistant/greet", { method: "POST" });
 }
 
-export function chatCommand(text, speak = true, language = "auto") {
+export function chatCommand(text, speak = true, language = "auto", history = []) {
   return request("/api/assistant/chat", {
     method: "POST",
-    body: JSON.stringify({ text, speak, language }),
+    body: JSON.stringify({ text, speak, language, history }),
   });
+}
+
+export async function streamChatCommand(text, language = "auto", history = [], onEvent = () => {}) {
+  const response = await fetch(`${API_BASE}/api/assistant/chat/stream`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ text, speak: false, language, history }),
+  });
+
+  if (!response.ok || !response.body) {
+    const message = await response.text();
+    throw new Error(message || `Request failed with status ${response.status}`);
+  }
+
+  const reader = response.body.getReader();
+  const decoder = new TextDecoder();
+  let buffer = "";
+  let finalEvent = null;
+
+  while (true) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    buffer += decoder.decode(value, { stream: true });
+    const lines = buffer.split("\n");
+    buffer = lines.pop() || "";
+    for (const line of lines) {
+      if (!line.trim()) continue;
+      const event = JSON.parse(line);
+      onEvent(event);
+      if (event.type === "done") finalEvent = event;
+    }
+  }
+
+  if (buffer.trim()) {
+    const event = JSON.parse(buffer);
+    onEvent(event);
+    if (event.type === "done") finalEvent = event;
+  }
+
+  return finalEvent || { response: "", status: "complete" };
 }
 
 export function runSystemTask(task) {
@@ -102,6 +160,21 @@ export function cancelAgentTask() {
   return request("/api/agent/cancel", { method: "POST" });
 }
 
+export function runTerminalCommand(command, cwd) {
+  return request("/api/terminal/run", {
+    method: "POST",
+    body: JSON.stringify({ command, cwd }),
+  });
+}
+
+export function getTerminalJobs() {
+  return request("/api/terminal/jobs");
+}
+
+export function cancelTerminalJob(jobId) {
+  return request(`/api/terminal/jobs/${encodeURIComponent(jobId)}/cancel`, { method: "POST" });
+}
+
 export function getExecutionLogs() {
   return request("/api/agent/logs");
 }
@@ -112,6 +185,68 @@ export function getThinkingTimeline() {
 
 export function getContextSnapshot() {
   return request("/api/context");
+}
+
+export function getAutonomousDashboard() {
+  return request("/api/dashboard");
+}
+
+export function getSyncStatus() {
+  return request("/api/sync/status");
+}
+
+export function runSyncBackup(provider = "", scope = []) {
+  return request("/api/sync/backup", {
+    method: "POST",
+    body: JSON.stringify({ provider: provider || null, scope }),
+  });
+}
+
+export function getTelemetryState() {
+  return request("/api/telemetry");
+}
+
+export function updateTelemetryConfig(patch) {
+  return request("/api/telemetry", {
+    method: "PATCH",
+    body: JSON.stringify(patch),
+  });
+}
+
+export function getLegalState() {
+  return request("/api/legal");
+}
+
+export function updateLegalConsent(patch) {
+  return request("/api/legal/consent", {
+    method: "PATCH",
+    body: JSON.stringify(patch),
+  });
+}
+
+export function getOptimizationStatus() {
+  return request("/api/optimization/status");
+}
+
+export function getMultimodalContext(goal = "", includeVision = false) {
+  return request("/api/context/multimodal", {
+    method: "POST",
+    body: JSON.stringify({ goal, includeVision }),
+  });
+}
+
+export function getPlatformIntelligence(goal = "", includeVision = false) {
+  return request("/api/platform/intelligence", {
+    method: "POST",
+    body: JSON.stringify({ goal, includeVision }),
+  });
+}
+
+export function executePlatformGoal(goal, includeVision = false) {
+  return request("/api/platform/execute", {
+    method: "POST",
+    body: JSON.stringify({ goal, includeVision }),
+  });
 }
 
 export function captureVisionScreenshot() {
@@ -135,6 +270,26 @@ export function stopWorkflowRecording() {
 
 export function replayWorkflow(id) {
   return request(`/api/workflows/replay/${encodeURIComponent(id)}`, { method: "POST" });
+}
+
+export function getWorkflowGraphs() {
+  return request("/api/workflows/graphs");
+}
+
+export function runWorkflowGraph(id) {
+  return request(`/api/workflows/graphs/${encodeURIComponent(id)}/run`, { method: "POST" });
+}
+
+export function getSchedulerState() {
+  return request("/api/scheduler");
+}
+
+export function searchKnowledge(query) {
+  return request(`/api/knowledge/search?q=${encodeURIComponent(query)}`);
+}
+
+export function searchResearch(query) {
+  return request(`/api/research/search?q=${encodeURIComponent(query)}`);
 }
 
 export function getPlugins() {
@@ -172,6 +327,21 @@ export function testProvider(provider, model) {
 
 export function getOllamaModels() {
   return request("/api/providers/ollama/models");
+}
+
+export function getProviderOrchestration() {
+  return request("/api/providers/orchestration");
+}
+
+export function openProviderLogin(provider) {
+  return request(`/api/providers/orchestration/login/${encodeURIComponent(provider)}`, { method: "POST" });
+}
+
+export function testProviderOrchestration(provider, prompt, multiProvider = false) {
+  return request("/api/providers/orchestration/test", {
+    method: "POST",
+    body: JSON.stringify({ provider, prompt, multiProvider }),
+  });
 }
 
 export function analyzeCodingProject(path) {

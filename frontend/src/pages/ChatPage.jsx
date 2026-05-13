@@ -1,12 +1,13 @@
 import { useState } from "react";
 import { useOutletContext } from "react-router-dom";
-import { Bot, Clock3, SendHorizontal, Trash2, User } from "lucide-react";
+import { Bot, Clock3, Plus, Search, SendHorizontal, Trash2, User } from "lucide-react";
 
 import MarkdownMessage from "../components/MarkdownMessage.jsx";
 
 export default function ChatPage() {
   const runtime = useOutletContext();
   const [text, setText] = useState("");
+  const [googleMode, setGoogleMode] = useState(false);
 
   async function submit(event) {
     event.preventDefault();
@@ -14,7 +15,7 @@ export default function ChatPage() {
     if (!trimmed) return;
     setText("");
     try {
-      await runtime.runTextFlow(trimmed);
+      await runtime.runTextFlow(trimmed, { google: googleMode });
     } catch {
       // Runtime already records the error in the response panel and logs.
     }
@@ -23,7 +24,12 @@ export default function ChatPage() {
   function clearChat() {
     if (!runtime.chatHistory.length) return;
     runtime.clearChatHistory();
-    runtime.addExecutionLog({ message: "Chat history cleared", level: "warning" });
+    runtime.addExecutionLog({ message: "Current chat cleared", level: "warning" });
+  }
+
+  function newChat() {
+    runtime.startNewChat();
+    runtime.addExecutionLog({ message: "Started a new chat thread", level: "info" });
   }
 
   return (
@@ -31,22 +37,57 @@ export default function ChatPage() {
       <div className="mb-3 shrink-0 flex flex-wrap items-start justify-between gap-3">
         <div>
           <h2 className="text-xl font-semibold tracking-[-0.03em] text-textPrimary">Chat</h2>
-          <p className="mt-1 text-sm text-textSecondary">Full assistant conversation with markdown and code block rendering.</p>
+          <p className="mt-1 text-sm text-textSecondary">Active thread context is kept for follow-up replies.</p>
         </div>
-        <button
-          type="button"
-          disabled={!runtime.chatHistory.length}
-          onClick={clearChat}
-          className="inline-flex h-10 items-center gap-2 rounded-2xl border border-line bg-white/[0.035] px-3 text-sm font-medium text-textSecondary transition hover:border-red-400/30 hover:bg-red-400/10 hover:text-red-200 disabled:cursor-not-allowed disabled:opacity-40"
-        >
-          <Trash2 size={15} />
-          Clear chat
-        </button>
+        <div className="flex items-center gap-2">
+          <button
+            type="button"
+            disabled={runtime.busy}
+            onClick={newChat}
+            className="inline-flex h-10 items-center gap-2 rounded-2xl border border-cyanCore/25 bg-cyanCore/10 px-3 text-sm font-medium text-cyanCore transition hover:border-cyanCore/50 hover:bg-cyanCore/15 disabled:cursor-not-allowed disabled:opacity-40"
+          >
+            <Plus size={16} />
+            New chat
+          </button>
+          <button
+            type="button"
+            disabled={!runtime.chatHistory.length || runtime.busy}
+            onClick={clearChat}
+            className="inline-flex h-10 items-center gap-2 rounded-2xl border border-line bg-white/[0.035] px-3 text-sm font-medium text-textSecondary transition hover:border-red-400/30 hover:bg-red-400/10 hover:text-red-200 disabled:cursor-not-allowed disabled:opacity-40"
+          >
+            <Trash2 size={15} />
+            Clear current
+          </button>
+        </div>
       </div>
+
+      {runtime.chatThreads?.length > 1 && (
+        <div className="mb-3 flex shrink-0 gap-2 overflow-x-auto pb-1">
+          {runtime.chatThreads.map((thread) => {
+            const active = thread.id === runtime.activeChatId;
+            return (
+              <button
+                key={thread.id}
+                type="button"
+                disabled={runtime.busy}
+                onClick={() => runtime.selectChatThread(thread.id)}
+                className={`max-w-[220px] shrink-0 truncate rounded-2xl border px-3 py-2 text-left text-xs font-medium transition disabled:cursor-not-allowed disabled:opacity-50 ${
+                  active
+                    ? "border-cyanCore/40 bg-cyanCore/10 text-cyanCore"
+                    : "border-line bg-white/[0.025] text-textSecondary hover:border-white/20 hover:text-textPrimary"
+                }`}
+                title={thread.title || "New chat"}
+              >
+                {thread.title || "New chat"}
+              </button>
+            );
+          })}
+        </div>
+      )}
 
       <div className="min-h-0 flex-1 space-y-3 overflow-auto pr-1">
         {runtime.chatHistory.length ? (
-          runtime.chatHistory.map((item) => (
+          [...runtime.chatHistory].reverse().map((item) => (
             <div key={item.id} className="space-y-3">
               <ConversationTime createdAt={item.createdAt} />
               <Bubble role="user" text={item.transcript} />
@@ -70,8 +111,23 @@ export default function ChatPage() {
           onChange={(event) => setText(event.target.value)}
           disabled={!runtime.backendOnline || runtime.busy}
           className="min-w-0 flex-1 bg-transparent px-3 py-2 text-sm text-textPrimary outline-none placeholder:text-textSecondary"
-          placeholder="Message Jarvis..."
+          placeholder={googleMode ? "Search Google in Chrome..." : "Message Jarvis..."}
         />
+        <button
+          type="button"
+          disabled={!runtime.backendOnline || runtime.busy}
+          onClick={() => setGoogleMode((active) => !active)}
+          className={`inline-flex h-10 shrink-0 items-center gap-1 rounded-2xl border px-3 text-xs font-semibold transition disabled:cursor-not-allowed disabled:opacity-40 ${
+            googleMode
+              ? "border-cyanCore/50 bg-cyanCore/15 text-cyanCore"
+              : "border-line bg-white/[0.035] text-textSecondary hover:border-white/20 hover:text-textPrimary"
+          }`}
+          title="Toggle Google search mode"
+          aria-pressed={googleMode}
+        >
+          <Search size={14} />
+          GG
+        </button>
         <button
           type="submit"
           disabled={!text.trim() || !runtime.backendOnline || runtime.busy}

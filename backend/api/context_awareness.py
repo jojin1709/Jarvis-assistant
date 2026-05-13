@@ -5,6 +5,7 @@ from datetime import datetime
 
 from api.browser_automation import browser_operator
 from api.memory_storage import memory_storage_state, recent_memories
+from terminal.service import terminal_service
 
 
 def context_snapshot() -> dict:
@@ -17,6 +18,7 @@ def context_snapshot() -> dict:
         },
         "processes": _running_processes(),
         "browser": browser_operator.state(),
+        "terminal": {"jobs": terminal_service.history(limit=12)},
         "memory": memory_storage_state(),
         "recent": recent_memories(limit=8),
     }

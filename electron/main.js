@@ -23,6 +23,10 @@ let splashWindow;
 let backendProcess;
 let tray;
 let isQuitting = false;
+let voiceEnabled = true;
+let voiceMuted = false;
+let voiceMode = "push_to_talk";
+let voiceInFlight = false;
 
 app.commandLine.appendSwitch("autoplay-policy", "no-user-gesture-required");
 app.setAppUserModelId("com.jx.jarvis");
@@ -118,6 +122,31 @@ async function startBackend() {
   });
 }
 
+function stopBackendProcess() {
+  if (!backendProcess || backendProcess.killed) return;
+
+  const backend = backendProcess;
+  const backendPid = backendProcess.pid;
+  if (process.platform === "win32" && backendPid) {
+    const taskkill = spawn("taskkill", ["/pid", String(backendPid), "/T", "/F"], {
+      stdio: "ignore",
+      windowsHide: true,
+    });
+    taskkill.on("error", () => backend.kill());
+  } else {
+    backend.kill();
+  }
+
+  backendProcess = undefined;
+}
+
+function quitJarvis() {
+  if (isQuitting) return;
+  isQuitting = true;
+  stopBackendProcess();
+  app.quit();
+}
+
 function showMainWindow() {
   if (!mainWindow) return;
   if (mainWindow.isMinimized()) mainWindow.restore();
@@ -137,27 +166,114 @@ function notify(title, body) {
   new Notification({ title, body, icon: ICON_PATH }).show();
 }
 
+function emitVoiceEvent(event) {
+  if (mainWindow && !mainWindow.isDestroyed()) {
+    mainWindow.webContents.send("voice:event", event);
+  }
+}
+
+async function backendRequest(pathname, options = {}) {
+  const response = await fetch(`http://127.0.0.1:${BACKEND_PORT}${pathname}`, {
+    headers: { "Content-Type": "application/json", ...(options.headers || {}) },
+    ...options,
+  });
+  const text = await response.text();
+  let payload = {};
+  try {
+    payload = text ? JSON.parse(text) : {};
+  } catch {
+    payload = { response: text };
+  }
+  if (!response.ok) {
+    throw new Error(payload.error || payload.response || `Backend request failed with ${response.status}`);
+  }
+  return payload;
+}
+
+async function setVoiceRuntime(patch) {
+  const result = await backendRequest("/api/voice/runtime", {
+    method: "PATCH",
+    body: JSON.stringify(patch),
+  });
+  const runtime = result.runtime || {};
+  voiceEnabled = runtime.enabled !== false;
+  voiceMuted = Boolean(runtime.muted);
+  voiceMode = runtime.mode || voiceMode;
+  updateTrayMenu();
+  emitVoiceEvent({ type: "runtime", runtime });
+  return runtime;
+}
+
+async function triggerPushToTalk(source = "global_hotkey") {
+  if (!voiceEnabled || voiceInFlight) return;
+  voiceInFlight = true;
+  emitVoiceEvent({ type: "activation", source, hotkey: "Space+M" });
+  try {
+    const result = await backendRequest("/api/voice/push-to-talk", {
+      method: "POST",
+      body: JSON.stringify({ source, speak: !voiceMuted }),
+    });
+    emitVoiceEvent({ type: "complete", source, result });
+    if (result?.transcript) notify("JX JARVIS heard you", result.transcript);
+  } catch (error) {
+    emitVoiceEvent({ type: "error", source, message: error.message });
+    notify("JX JARVIS voice failed", error.message);
+  } finally {
+    voiceInFlight = false;
+  }
+}
+
+function updateTrayMenu() {
+  if (!tray) return;
+  tray.setToolTip(`JX JARVIS - voice ${voiceEnabled ? voiceMode.replaceAll("_", " ") : "disabled"}`);
+  tray.setContextMenu(buildTrayMenu());
+}
+
+function buildTrayMenu() {
+  return Menu.buildFromTemplate([
+    { label: "Show JX JARVIS", click: showMainWindow },
+    { label: "Assistant Overlay", click: () => sendGlobalCommand("assistant-overlay") },
+    { label: "Command Palette", click: () => sendGlobalCommand("command-palette") },
+    { label: "Hide to tray", click: () => mainWindow?.hide() },
+    { type: "separator" },
+    {
+      label: "Enable Voice",
+      type: "checkbox",
+      checked: voiceEnabled,
+      click: (item) => setVoiceRuntime({ enabled: item.checked }).catch((error) => notify("Voice runtime", error.message)),
+    },
+    {
+      label: "Mute Jarvis",
+      type: "checkbox",
+      checked: voiceMuted,
+      click: (item) => setVoiceRuntime({ muted: item.checked }).catch((error) => notify("Voice runtime", error.message)),
+    },
+    { label: "Push-To-Talk Space+M", click: () => triggerPushToTalk("tray") },
+    {
+      label: "Continuous Listening",
+      type: "radio",
+      checked: voiceMode === "continuous",
+      click: () => setVoiceRuntime({ mode: "continuous" }).catch((error) => notify("Voice runtime", error.message)),
+    },
+    {
+      label: "Push-To-Talk Mode",
+      type: "radio",
+      checked: voiceMode === "push_to_talk",
+      click: () => setVoiceRuntime({ mode: "push_to_talk" }).catch((error) => notify("Voice runtime", error.message)),
+    },
+    { type: "separator" },
+    {
+      label: "Quit",
+      click: quitJarvis,
+    },
+  ]);
+}
+
 function createTray() {
   if (tray || !fs.existsSync(ICON_PATH)) return;
 
   tray = new Tray(ICON_PATH);
-  tray.setToolTip("JX JARVIS - listening for Hey Jarvis");
-  tray.setContextMenu(
-    Menu.buildFromTemplate([
-      { label: "Show JX JARVIS", click: showMainWindow },
-      { label: "Assistant Overlay", click: () => sendGlobalCommand("assistant-overlay") },
-      { label: "Command Palette", click: () => sendGlobalCommand("command-palette") },
-      { label: "Hide to tray", click: () => mainWindow?.hide() },
-      { type: "separator" },
-      {
-        label: "Quit",
-        click: () => {
-          isQuitting = true;
-          app.quit();
-        },
-      },
-    ]),
-  );
+  updateTrayMenu();
   tray.on("click", showMainWindow);
 }
 
@@ -195,6 +311,7 @@ async function createWindow() {
     if (isQuitting) return;
     event.preventDefault();
     mainWindow.hide();
+    notify("JX JARVIS is still running", "Voice hotkey Space+M remains active in the tray.");
   });
 
   mainWindow.once("ready-to-show", async () => {
@@ -244,7 +361,10 @@ ipcMain.on("window:maximize", () => {
   if (mainWindow.isMaximized()) mainWindow.unmaximize();
   else mainWindow.maximize();
 });
-ipcMain.on("window:close", () => mainWindow?.close());
+ipcMain.on("window:close", () => {
+  if (isQuitting) return;
+  mainWindow?.hide();
+});
 ipcMain.handle("window:is-maximized", () => Boolean(mainWindow?.isMaximized()));
 ipcMain.handle("system:get-open-at-login", () => app.getLoginItemSettings().openAtLogin);
 ipcMain.handle("system:set-open-at-login", (_event, enabled) => {
@@ -265,6 +385,8 @@ ipcMain.handle("system:choose-folder", async (_event, title) => {
   if (result.canceled || !result.filePaths.length) return null;
   return result.filePaths[0];
 });
+ipcMain.handle("voice:push-to-talk", () => triggerPushToTalk("renderer"));
+ipcMain.handle("voice:set-runtime", (_event, patch) => setVoiceRuntime(patch || {}));
 
 if (gotSingleInstanceLock) {
   app.whenReady().then(async () => {
@@ -272,7 +394,13 @@ if (gotSingleInstanceLock) {
     await createWindow();
     globalShortcut.register("CommandOrControl+K", () => sendGlobalCommand("command-palette"));
     globalShortcut.register("Alt+Space", () => sendGlobalCommand("assistant-overlay"));
-    notify("JX JARVIS is running", "Wake word and command palette are ready.");
+    const pttRegistered = globalShortcut.register("Space+M", () => triggerPushToTalk("global_hotkey"));
+    if (!pttRegistered) {
+      const fallbackRegistered = globalShortcut.register("Alt+M", () => triggerPushToTalk("global_hotkey_fallback"));
+      notify("JX JARVIS voice hotkey", fallbackRegistered ? "Space+M was unavailable, using Alt+M fallback." : "Voice hotkey registration failed.");
+    }
+    setVoiceRuntime({ enabled: true }).catch((error) => console.error(`[JX Voice] ${error.message}`));
+    notify("JX JARVIS is running", "Voice runtime is ready. Press Space+M for push-to-talk.");
   });
 }
 
@@ -281,7 +409,7 @@ app.on("second-instance", () => {
 });
 
 app.on("window-all-closed", () => {
-  if (isQuitting && backendProcess && !backendProcess.killed) backendProcess.kill();
+  if (isQuitting) stopBackendProcess();
   if (isQuitting && process.platform !== "darwin") app.quit();
 });
 
@@ -293,5 +421,5 @@ app.on("activate", () => {
 app.on("before-quit", () => {
   isQuitting = true;
   globalShortcut.unregisterAll();
-  if (backendProcess && !backendProcess.killed) backendProcess.kill();
+  stopBackendProcess();
 });

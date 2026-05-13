@@ -20,6 +20,7 @@ JX Jarvis is built to do real work, not just reply with text.
 - Store local memory, conversations, workflows, and preferences.
 - Protect sensitive folders, files, apps, and actions with permissions.
 - Switch between cloud AI and local/offline AI providers.
+- Route AI work through logged-in ChatGPT, Claude, and Gemini browser sessions.
 - Show live thinking, planning, execution logs, retries, and verification.
 
 ## Documentation Website
@@ -30,16 +31,91 @@ https://jojin1709.github.io/Jarvis-assistant/
 
 The documentation includes installation, first-time setup, voice, browser automation, AI providers, memory, permissions, workflows, plugin system, and developer guide pages.
 
+For the newest platform changes, see [documentation/latest-upgrade-summary.md](documentation/latest-upgrade-summary.md).
+
 ## Core Features
+
+### Autonomous OS Layer
+
+Jarvis now includes a modular autonomous execution layer:
+
+- Planner/task graph engine with optional LangGraph adapter.
+- Specialized agents for planning, coding, browser work, recon, reports, memory, and DevOps.
+- Secure queued terminal execution with command history, cancellation, stdout/stderr capture, and safety policy checks.
+- Self-healing full-stack coding loop for MERN-style projects.
+- Bug bounty recon workflow that chains locally installed tools and exports Markdown reports.
+- SQLite memory with deterministic local embeddings for project, workflow, conversation, and report recall.
+
+See [documentation/autonomous-os-architecture.md](documentation/autonomous-os-architecture.md) for architecture details.
+
+### Autonomous Multimodal Workstation
+
+Jarvis now has a unified world-state layer that connects screen vision, browser state, terminal jobs, workflow graphs, scheduler tasks, provider status, knowledge search, execution telemetry, and agent messages into one operating dashboard.
+
+New integrated systems include:
+
+- OCR-backed screenshot analysis and UI/popup detection.
+- Permission-checked desktop automation.
+- Graph workflow builder/runtime with recurring scheduler support.
+- SQLite knowledge base with local deterministic embeddings.
+- Behavior learning and execution quality scoring.
+- Docker sandbox execution for generated code and tools.
+- Internet research helpers and live codebase mapping.
+- Agent message bus, decision engine, self-improvement analytics, and mobile companion notification state.
+
+See [documentation/autonomous-multimodal-workstation.md](documentation/autonomous-multimodal-workstation.md) for API and setup details.
+
+### Unified Autonomous Platform
+
+Jarvis now has a central intelligence layer that joins the agents into one operating platform rather than disconnected tools. The platform stores active task state, execution history, failure memory, service capabilities, selected strategy, context digest, agent messages, and recent task outcomes.
+
+Core flow:
+
+```text
+Goal -> intelligence snapshot -> task graph -> agent execution loop -> retry/self-heal -> memory/dashboard
+```
+
+See [documentation/unified-autonomous-platform.md](documentation/unified-autonomous-platform.md) for the orchestration model and execution diagrams.
+
+### Agentic Cognitive Loop
+
+Jarvis now runs platform goals through a structured cognitive loop:
+
+```text
+understand -> retrieve context -> plan -> coordinate agents -> execute -> observe -> reflect -> adapt -> retry safely -> remember
+```
+
+The loop adds reasoning plans, execution reviews, strategy optimization, failure classification, adaptive retry decisions, agent coordination events, and memory retrieval to normal autonomous execution.
+
+See [documentation/agentic-cognitive-architecture.md](documentation/agentic-cognitive-architecture.md) for lifecycle details.
+
+### Complete Autonomous Operating Platform
+
+The latest core layer adds runtime environment awareness, crash-safe checkpoints, event-driven execution, a formal execution state machine, dry-run simulation, distributed worker queues, internal skills, marketplace registries, explainability, recovery planning, and resource optimization.
+
+See [documentation/complete-autonomous-operating-platform.md](documentation/complete-autonomous-operating-platform.md) for the full core architecture and API list.
+
+### Production Platform Finalization
+
+Jarvis now includes optional user-owned cloud sync, encrypted local backup bundles, production telemetry controls, legal consent management, release security helpers, generated docs, community registry readiness, remote-worker architecture, and a polished production runtime panel.
+
+Cloud sync is local-first and optional. It supports Google Drive, Dropbox, and OneDrive OAuth configuration without requiring centralized Jarvis cloud infrastructure. Jarvis never syncs raw browser cookies, plaintext credentials, `.env` files, virtual environments, or provider key stores.
+
+See [documentation/production-platform-finalization.md](documentation/production-platform-finalization.md) for sync, release, installer, update, and deployment lifecycle details.
 
 ### Voice Assistant
 
 - Wake words: `Hey Jarvis`, `Jarvis`
+- Global push-to-talk hotkey: `Space+M`
+- Background voice runtime starts when Jarvis launches
+- Tray controls for voice enable/disable, mute, push-to-talk, and continuous listening
 - English and Malayalam support
 - Manual voice activation
 - Background listening controls
 - Edge TTS, Sarvam TTS, and local voice routing hooks
 - Local Whisper route support when the dependency is installed
+
+See [documentation/global-voice-activation.md](documentation/global-voice-activation.md) for the hotkey, tray, STT/TTS, and background runtime lifecycle.
 
 ### Visual Browser Automation
 
@@ -160,6 +236,19 @@ Provider settings include:
 - Hybrid failover
 - Temperature and token settings
 
+### AI Provider Orchestration Layer
+
+Jarvis can use AI websites through Playwright browser automation with persistent local profiles:
+
+- ChatGPT Web
+- Claude Web
+- Gemini Web
+- Ollama, llama.cpp, DeepSeek, Qwen, and Llama-compatible local fallback through the existing local provider routes
+
+The orchestration layer supports task routing, provider fallback, parallel multi-provider prompting, source-tracked response aggregation, prompt history, provider timing logs, and manual login recovery. It does not store web credentials, bypass captchas, automate account creation, or evade provider protections.
+
+See [documentation/ai-provider-orchestration.md](documentation/ai-provider-orchestration.md) for setup.
+
 ## Tech Stack
 
 Frontend:
@@ -216,6 +305,7 @@ JX-JARVIS/
     execution/
     memory/
     plugins/
+    profiles/
     providers/
     safety/
     system/

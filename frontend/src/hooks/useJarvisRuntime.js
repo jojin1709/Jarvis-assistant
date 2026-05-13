@@ -6,6 +6,7 @@ import {
   captureVisionScreenshot,
   closeBrowserTask,
   executeAgentTask,
+  getAutonomousDashboard,
   getBrowserState,
   getContextSnapshot,
   getExecutionLogs,
@@ -15,9 +16,11 @@ import {
   getPermissions,
   getPlugins,
   getProviders,
+  getProviderOrchestration,
   getProfile,
   getSystemApps,
   getThinkingTimeline,
+  getVoiceRuntime,
   getWorkflowRecorder,
   greetCommand,
   health,
@@ -33,19 +36,31 @@ import {
   startWorkflowRecording,
   stopBrowserTask,
   stopWorkflowRecording,
+  streamChatCommand,
   uploadFile,
   wakeListen,
+  updateVoiceRuntime,
 } from "../services/api.js";
 import { useWorkspaceStore } from "../store/useWorkspaceStore.js";
 import { fx } from "../lib/sounds.js";
+import { setElectronVoiceRuntime, subscribeToGlobalVoice, triggerGlobalPushToTalk } from "../voice/hotkey_listener.ts";
 
 const wait = (milliseconds) => new Promise((resolve) => window.setTimeout(resolve, milliseconds));
+const googlePrefixPattern = /^(?:gg|\/g)\s+/i;
+
+function googleSearchCommand(text) {
+  const query = text.replace(googlePrefixPattern, "").trim();
+  return query ? `search google for ${query}` : text;
+}
 
 export function useJarvisRuntime() {
   const store = useWorkspaceStore();
   const greetingStarted = useRef(false);
   const wakeLoopActive = useRef(false);
   const modeRef = useRef(store.mode);
+  const languageModeRef = useRef(store.languageMode);
+  const textCommandInFlight = useRef(false);
+  const lastTextCommand = useRef({ text: "", startedAt: 0 });
 
   const busy = useMemo(
     () => ["listening", "thinking", "speaking", "executing", "indexing", "coding", "memory"].includes(store.mode),
@@ -56,6 +71,10 @@ export function useJarvisRuntime() {
   useEffect(() => {
     modeRef.current = store.mode;
   }, [store.mode]);
+
+  useEffect(() => {
+    languageModeRef.current = store.languageMode;
+  }, [store.languageMode]);
 
   useEffect(() => {
     if (store.settings.startupAudio) {
@@ -125,18 +144,71 @@ export function useJarvisRuntime() {
     if (!store.backendOnline) return undefined;
     const poll = async () => {
       try {
-        const [thinking, context, recorder, plugins, providers] = await Promise.all([
+        const result = await getVoiceRuntime();
+        store.setVoiceRuntime(result.runtime || {});
+      } catch {
+        // Voice runtime starts with the backend; status polling is best-effort.
+      }
+    };
+    poll();
+    const timer = window.setInterval(poll, 2500);
+    return () => window.clearInterval(timer);
+  }, [store.backendOnline]);
+
+  useEffect(() => {
+    const unsubscribe = subscribeToGlobalVoice((event) => {
+      if (event.type === "activation") {
+        fx.listening();
+        store.setMode("listening");
+        store.setTranscript("Push-to-talk activated.");
+        store.setResponse("Listening from global hotkey Space+M.");
+        store.addExecutionLog({ message: "Global push-to-talk activated.", level: "running" });
+        return;
+      }
+      if (event.type === "runtime") {
+        store.setVoiceRuntime(event.runtime || {});
+        return;
+      }
+      if (event.type === "complete") {
+        const result = event.result || {};
+        fx.response();
+        store.setMode("online");
+        store.setTranscript(result.transcript || "Voice command");
+        store.setResponse(result.response || "Done.");
+        store.addVoiceHistory({ transcript: result.transcript || "", response: result.response || "" });
+        store.addConversation({ transcript: result.transcript || "Voice command", response: result.response || "Done." });
+        store.addExecutionLog({ message: `Global voice command complete: ${result.transcript || "voice command"}`, level: "success" });
+        return;
+      }
+      if (event.type === "error") {
+        store.setMode("error");
+        store.setResponse(event.message || "Voice hotkey failed.");
+        store.addExecutionLog({ message: event.message || "Voice hotkey failed.", level: "error" });
+      }
+    });
+    return unsubscribe;
+  }, []);
+
+  useEffect(() => {
+    if (!store.backendOnline) return undefined;
+    const poll = async () => {
+      try {
+        const [thinking, context, recorder, plugins, providers, orchestration, dashboard] = await Promise.all([
           getThinkingTimeline(),
           getContextSnapshot(),
           getWorkflowRecorder(),
           getPlugins(),
           getProviders(),
+          getProviderOrchestration(),
+          getAutonomousDashboard(),
         ]);
         store.setThinkingTimeline(thinking.thinking || [], thinking.control || undefined);
         store.setContextSnapshot(context.context || null);
         store.setWorkflowRecorder(recorder.recorder || {});
         store.setPlugins(plugins.plugins || []);
         store.setAiProviders(providers.providers || [], providers.config || null, providers.ollamaModels || []);
+        store.setProviderOrchestration(orchestration || {});
+        store.setAutonomousDashboard(dashboard || {});
       } catch {
         // Advanced telemetry is optional while subsystems are starting.
       }
@@ -271,17 +343,67 @@ export function useJarvisRuntime() {
     }
   }
 
+  async function runGlobalPushToTalkFlow() {
+    fx.listening();
+    store.setMode("listening");
+    store.setTranscript("Push-to-talk activated.");
+    store.setResponse("Listening from global voice runtime...");
+    const result = await triggerGlobalPushToTalk();
+    if (result) return result;
+    return runVoiceFlow();
+  }
+
+  async function updateVoiceRuntimeFlow(patch) {
+    const electronResult = await setElectronVoiceRuntime(patch);
+    if (electronResult) {
+      store.setVoiceRuntime(electronResult);
+      return electronResult;
+    }
+    const result = await updateVoiceRuntime(patch);
+    store.setVoiceRuntime(result.runtime || {});
+    return result.runtime || {};
+  }
+
   async function runTextFlow(text, options = {}) {
+    const rawText = text.trim();
+    const normalizedText = options.google || googlePrefixPattern.test(rawText) ? googleSearchCommand(rawText) : rawText;
+    const now = Date.now();
+    if (
+      textCommandInFlight.current
+      || (lastTextCommand.current.text === normalizedText && now - lastTextCommand.current.startedAt < 2500)
+    ) {
+      return { response: "That command is already running." };
+    }
+    textCommandInFlight.current = true;
+    lastTextCommand.current = { text: normalizedText, startedAt: now };
     fx.click();
     store.setMode(options.agent ? "executing" : "thinking");
-    store.setTranscript(text);
+    store.setTranscript(normalizedText);
     const pendingResponse = options.agent ? "Planning and executing..." : "Thinking...";
     store.setResponse(options.agent ? "Planning and executing..." : "Working on it...");
-    const conversationId = store.addConversation({ transcript: text, response: pendingResponse });
-    store.addExecutionLog({ message: `Received command: ${text}`, level: "info" });
+    const conversationContext = store.chatHistory
+      .slice(0, 12)
+      .reverse()
+      .map((item) => ({
+        transcript: item.transcript,
+        response: item.response,
+      }));
+    const conversationId = store.addConversation({ transcript: normalizedText, response: pendingResponse });
+    store.addExecutionLog({ message: `Received command: ${normalizedText}`, level: "info" });
 
     try {
-      const result = options.agent ? await executeAgentTask(text) : await chatCommand(text, true, store.languageMode);
+      const useStreaming = !options.agent && Boolean(store.aiProviderConfig?.settings?.streaming);
+      let streamedResponse = "";
+      const result = options.agent
+        ? await executeAgentTask(normalizedText)
+        : useStreaming
+          ? await streamChatCommand(normalizedText, languageModeRef.current, conversationContext, (event) => {
+              if (event.type !== "chunk") return;
+              streamedResponse += event.text;
+              store.setResponse(streamedResponse);
+              if (conversationId) store.updateConversation(conversationId, { response: streamedResponse });
+            })
+          : await chatCommand(normalizedText, true, languageModeRef.current, conversationContext);
       fx.response();
       const response = result.response || result.summary || "Done.";
       store.setResponse(response);
@@ -302,6 +424,8 @@ export function useJarvisRuntime() {
       }
       store.addExecutionLog({ message, level: "error" });
       throw error;
+    } finally {
+      textCommandInFlight.current = false;
     }
   }
 
@@ -512,6 +636,8 @@ export function useJarvisRuntime() {
     busy,
     activeWave,
     runVoiceFlow,
+    runGlobalPushToTalkFlow,
+    updateVoiceRuntimeFlow,
     runTextFlow,
     runBrowserFlow,
     previewPlanFlow,

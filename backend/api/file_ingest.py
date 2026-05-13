@@ -5,6 +5,7 @@ from werkzeug.datastructures import FileStorage
 from werkzeug.utils import secure_filename
 
 from api.ai_provider import ask_ai
+from api.memory_storage import remember_event
 from api.permissions import evaluate_permission, log_activity
 from api.sarvam_services import analyze_sarvam_document
 from app.config import settings
@@ -67,6 +68,7 @@ def save_and_analyze(file: FileStorage) -> dict[str, str | int | bool | None]:
     text_indexed = extension in TEXT_EXTENSIONS
     document_output = None
     document_intelligence_used = False
+    preview_text = ""
 
     if _should_use_document_intelligence(extension):
         document_intelligence_used = True
@@ -90,6 +92,7 @@ def save_and_analyze(file: FileStorage) -> dict[str, str | int | bool | None]:
             )
     elif text_indexed:
         content = _read_text(output_path)
+        preview_text = content[:3000]
         prompt = (
             "Analyze this uploaded file for JX JARVIS. Give a concise useful summary, "
             "important details, and suggested next actions.\n\n"
@@ -97,12 +100,39 @@ def save_and_analyze(file: FileStorage) -> dict[str, str | int | bool | None]:
             f"Content:\n{content}"
         )
         summary = ask_ai(prompt)
+    elif mime_type.startswith("image/"):
+        try:
+            from vision.screenshot import analyze_image
+
+            analysis = analyze_image(output_path, source="uploaded image")
+            summary = analysis.get("summary") or f"Image received and stored: {output_path.name}."
+            if analysis.get("detectedText"):
+                summary = f"{summary}\nDetected text: {analysis['detectedText'][:600]}"
+        except Exception as error:
+            summary = f"Image received and stored: {output_path.name}. Local image analysis failed: {error}"
     else:
         summary = (
             f"File received and stored: {output_path.name}. Type detected: {mime_type}. "
             "For binary media such as images and videos, I can track the file and use its metadata. "
             "Text extraction is available for text, code, markdown, CSV, and JSON files."
         )
+
+    try:
+        remember_event(
+            "cache",
+            f"Uploaded file: {output_path.name}",
+            summary,
+            {
+                "path": str(output_path),
+                "mime_type": mime_type,
+                "size": size,
+                "text_indexed": text_indexed,
+                "document_intelligence_used": document_intelligence_used,
+                "preview": preview_text[:1200],
+            },
+        )
+    except OSError:
+        pass
 
     return {
         "filename": output_path.name,
@@ -112,6 +142,7 @@ def save_and_analyze(file: FileStorage) -> dict[str, str | int | bool | None]:
         "text_indexed": text_indexed,
         "document_intelligence_used": document_intelligence_used,
         "document_output": document_output,
+        "preview": preview_text,
         "summary": summary,
     }
 

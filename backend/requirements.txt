@@ -11,3 +11,9 @@ edge-tts>=7.0.0
 playsound==1.2.2
 playwright>=1.48.0
 Pillow>=10.4.0
+langgraph>=0.2.0
+pyautogui>=0.9.54
+pyperclip>=1.9.0
+pytesseract>=0.3.13
+psutil>=6.1.0
+faster-whisper>=1.1.0

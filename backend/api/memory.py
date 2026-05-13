@@ -4,6 +4,7 @@ import re
 from datetime import datetime
 from pathlib import Path
 
+from api.memory_storage import search_memories
 from api.permissions import guard_action, memory_enabled
 from providers.secure_store import save_secret
 
@@ -162,6 +163,20 @@ def handle_memory_command(text: str) -> str | None:
             return "Memory is disabled in Security & Permissions."
         context = memory_context()
         return "I do not have saved memories yet." if not context else f"Saved memory:\n{context}"
+
+    search_match = re.match(r"^(?:search memory for|find memory about|what do you remember about)\s+(.+)$", cleaned, re.IGNORECASE)
+    if search_match:
+        if not memory_enabled():
+            return "Memory is disabled in Security & Permissions."
+        query = search_match.group(1).strip(" .")
+        matches = search_memories(query, limit=8)
+        if not matches:
+            return f"I did not find saved memory matching '{query}'."
+        lines = [f"Memory matches for '{query}':"]
+        for item in matches:
+            content = re.sub(r"\s+", " ", str(item.get("content") or "")).strip()
+            lines.append(f"- {item.get('kind')}: {item.get('title')} - {content[:220]}")
+        return "\n".join(lines)
 
     if normalized in {"forget everything", "clear memory", "clear memories", "delete memory", "delete memories"}:
         return clear_memory()

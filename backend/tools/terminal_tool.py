@@ -2,6 +2,7 @@ import subprocess
 
 from api.permissions import guard_action
 from safety.policy import command_risk
+from terminal.service import terminal_service
 
 
 SAFE_TERMINAL_COMMANDS = {
@@ -35,7 +36,10 @@ def run_terminal_command(command: str, cwd: str | None = None) -> str:
         return str(risk["reason"])
 
     if normalized not in SAFE_TERMINAL_COMMANDS:
-        return "Terminal command blocked. Only safe diagnostic commands are allowed from autonomous workflows."
+        job = terminal_service.run_sync(normalized, cwd=cwd)
+        if job.status == "completed":
+            return (job.stdout or job.stderr or f"Command completed: {normalized}").strip()
+        return (job.stderr or job.stdout or f"Terminal command {job.status}.").strip()
 
     def run() -> str:
         result = subprocess.run(

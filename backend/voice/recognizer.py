@@ -1,6 +1,10 @@
 import speech_recognition as sr
-import sounddevice as sd
 import wave
+
+try:
+    import sounddevice as sd
+except Exception:  # pragma: no cover - optional host audio dependency
+    sd = None
 
 from api.sarvam_services import transcribe_sarvam_audio
 from app.config import settings
@@ -31,6 +35,8 @@ class VoiceRecognizer:
         self.recognizer.dynamic_energy_threshold = True
 
     def listen_once(self, duration: int = 6, sample_rate: int = 16000, language_mode: str = "auto") -> str:
+        if sd is None:
+            return "Local microphone support is unavailable because the sounddevice package is not installed."
         recording = sd.rec(
             int(duration * sample_rate),
             samplerate=sample_rate,

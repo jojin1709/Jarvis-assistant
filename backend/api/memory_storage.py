@@ -1,4 +1,5 @@
 import json
+import hashlib
 import shutil
 import sqlite3
 import zipfile
@@ -77,31 +78,60 @@ def remember_event(kind: str, title: str, content: str, metadata: dict | None = 
     timestamp = datetime.now().isoformat(timespec="seconds")
     metadata = metadata or {}
     db_path = root / "brain.sqlite3"
-    _init_database(root)
-    with sqlite3.connect(db_path) as connection:
-        connection.execute(
-            """
-            insert into memories(kind, title, content, metadata_json, created_at, updated_at)
-            values (?, ?, ?, ?, ?, ?)
-            """,
-            (safe_kind, title[:240], content[:12000], json.dumps(metadata), timestamp, timestamp),
-        )
-        connection.commit()
+    try:
+        _init_database(root)
+    except sqlite3.OperationalError:
+        pass
+
+    try:
+        columns = _memory_columns(db_path)
+        with sqlite3.connect(db_path) as connection:
+            if "embedding_json" in columns:
+                connection.execute(
+                    """
+                    insert into memories(kind, title, content, metadata_json, embedding_json, created_at, updated_at)
+                    values (?, ?, ?, ?, ?, ?, ?)
+                    """,
+                    (
+                        safe_kind,
+                        title[:240],
+                        content[:12000],
+                        json.dumps(metadata),
+                        json.dumps(_text_embedding(f"{safe_kind} {title} {content}")),
+                        timestamp,
+                        timestamp,
+                    ),
+                )
+            else:
+                connection.execute(
+                    """
+                    insert into memories(kind, title, content, metadata_json, created_at, updated_at)
+                    values (?, ?, ?, ?, ?, ?)
+                    """,
+                    (safe_kind, title[:240], content[:12000], json.dumps(metadata), timestamp, timestamp),
+                )
+            connection.commit()
+    except sqlite3.Error:
+        pass
 
     record_path = root / safe_kind / f"{datetime.now().strftime('%Y%m%d-%H%M%S-%f')}.json"
-    record_path.write_text(
-        json.dumps(
-            {
-                "kind": safe_kind,
-                "title": title,
-                "content": content,
-                "metadata": metadata,
-                "created_at": timestamp,
-            },
-            indent=2,
-        ),
-        encoding="utf-8",
-    )
+    try:
+        record_path.parent.mkdir(parents=True, exist_ok=True)
+        record_path.write_text(
+            json.dumps(
+                {
+                    "kind": safe_kind,
+                    "title": title,
+                    "content": content,
+                    "metadata": metadata,
+                    "created_at": timestamp,
+                },
+                indent=2,
+            ),
+            encoding="utf-8",
+        )
+    except OSError:
+        pass
 
 
 def remember_conversation(user_text: str, assistant_text: str, metadata: dict | None = None) -> None:
@@ -122,8 +152,14 @@ def recent_memories(limit: int = 20, kind: str | None = None) -> list[dict[str, 
     db_path = root / "brain.sqlite3"
     if not db_path.exists():
         return []
+    try:
+        _init_database(root)
+    except sqlite3.OperationalError:
+        pass
 
-    query = "select id, kind, title, content, metadata_json, created_at from memories"
+    columns = _memory_columns(db_path)
+    embedding_select = "embedding_json" if "embedding_json" in columns else "'' as embedding_json"
+    query = f"select id, kind, title, content, metadata_json, created_at, {embedding_select} from memories"
     values: tuple = ()
     if kind:
         query += " where kind = ?"
@@ -149,9 +185,38 @@ def recent_memories(limit: int = 20, kind: str | None = None) -> list[dict[str, 
                 "content": row[3],
                 "metadata": metadata,
                 "created_at": row[5],
+                "embedding": _load_embedding(row[6] if len(row) > 6 else ""),
             }
         )
     return memories
+
+
+def search_memories(query: str, limit: int = 12, kind: str | None = None) -> list[dict[str, object]]:
+    tokens = [token for token in _search_tokens(query) if len(token) >= 2]
+    if not tokens:
+        return []
+
+    root = configured_memory_root()
+    db_path = root / "brain.sqlite3"
+    if not db_path.exists():
+        return []
+
+    rows = recent_memories(limit=400, kind=kind)
+    query_embedding = _text_embedding(query)
+    scored: list[tuple[int, dict[str, object]]] = []
+    for memory in rows:
+        haystack = " ".join(
+            str(value or "")
+            for value in (memory.get("kind"), memory.get("title"), memory.get("content"), json.dumps(memory.get("metadata") or {}))
+        ).lower()
+        keyword_score = sum(3 if token in str(memory.get("title", "")).lower() else 1 for token in tokens if token in haystack)
+        embedding_score = int(_cosine(query_embedding, memory.get("embedding") if isinstance(memory.get("embedding"), list) else []) * 100)
+        score = keyword_score * 10 + embedding_score
+        if score > 0:
+            scored.append((score, memory))
+
+    scored.sort(key=lambda item: (item[0], str(item[1].get("created_at") or "")), reverse=True)
+    return [memory for _score, memory in scored[:limit]]
 
 
 def backup_memory() -> dict:
@@ -209,14 +274,26 @@ def _init_database(root: Path) -> None:
                 title text not null,
                 content text not null,
                 metadata_json text,
+                embedding_json text,
                 created_at text not null,
                 updated_at text not null
             )
             """
         )
+        columns = {row[1] for row in connection.execute("pragma table_info(memories)").fetchall()}
+        if "embedding_json" not in columns:
+            connection.execute("alter table memories add column embedding_json text")
         connection.execute("create index if not exists idx_memories_kind on memories(kind)")
         connection.execute("create index if not exists idx_memories_created_at on memories(created_at)")
         connection.commit()
+
+
+def _memory_columns(db_path: Path) -> set[str]:
+    try:
+        with sqlite3.connect(db_path) as connection:
+            return {row[1] for row in connection.execute("pragma table_info(memories)").fetchall()}
+    except sqlite3.Error:
+        return set()
 
 
 def _safe_root(value: str) -> Path:
@@ -247,3 +324,34 @@ def _format_bytes(value: int) -> str:
             return f"{size:.1f} {unit}" if unit != "B" else f"{int(size)} B"
         size /= 1024
     return f"{int(value)} B"
+
+
+def _search_tokens(value: str) -> list[str]:
+    return [token.strip().lower() for token in "".join(ch if ch.isalnum() else " " for ch in value).split()]
+
+
+def _text_embedding(value: str, dimensions: int = 64) -> list[float]:
+    vector = [0.0] * dimensions
+    for token in _search_tokens(value):
+        slot = int(hashlib.sha256(token.encode("utf-8")).hexdigest()[:8], 16) % dimensions
+        vector[slot] += 1.0
+    magnitude = sum(item * item for item in vector) ** 0.5
+    if not magnitude:
+        return vector
+    return [round(item / magnitude, 6) for item in vector]
+
+
+def _cosine(left: list[float], right: list[float]) -> float:
+    if not left or not right or len(left) != len(right):
+        return 0.0
+    return sum(a * b for a, b in zip(left, right))
+
+
+def _load_embedding(value: object) -> list[float]:
+    try:
+        parsed = json.loads(str(value or "[]"))
+    except json.JSONDecodeError:
+        return []
+    if not isinstance(parsed, list):
+        return []
+    return [float(item) for item in parsed if isinstance(item, (int, float))]

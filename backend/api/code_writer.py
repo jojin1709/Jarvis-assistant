@@ -1,6 +1,7 @@
 import json
 import os
 import re
+import socket
 import subprocess
 import sys
 import webbrowser
@@ -12,40 +13,11 @@ from api.memory_storage import remember_project
 
 
 CODE_ROOT = Path.home() / "Desktop" / "JX-JARVIS-Code"
-RUNTIME_DIR = Path(__file__).resolve().parents[1] / "runtime"
-PENDING_BRIEF_PATH = RUNTIME_DIR / "pending_code_brief.json"
 MAX_FILES = 10
 MAX_FILE_CHARS = 60000
 READY_RESPONSE = "Yes sir, it is ready."
-GENERIC_WEBSITE_WORDS = {
-    "a",
-    "an",
-    "and",
-    "beautiful",
-    "best",
-    "better",
-    "cool",
-    "create",
-    "develop",
-    "for",
-    "full",
-    "good",
-    "great",
-    "landing",
-    "make",
-    "me",
-    "modern",
-    "nice",
-    "page",
-    "premium",
-    "professional",
-    "responsive",
-    "site",
-    "stylish",
-    "the",
-    "website",
-    "web",
-}
+_RECENT_GENERATIONS: dict[str, tuple[float, str]] = {}
+_GENERATION_DEDUP_SECONDS = 8
 
 
 CODE_TRIGGERS = (
@@ -251,136 +223,24 @@ def _looks_like_code_creation(normalized: str) -> bool:
     if (asks_for_output or wants_project) and has_code_intent:
         return True
 
-    return False
+    if has_code_intent and any(phrase in normalized for phrase in ("website for", "portfolio for", "landing page for", "web app for")):
+        return True
 
+    if normalized.startswith(("website ", "portfolio ", "landing page ", "web app ")):
+        return True
+
+    return False
 
 def is_portfolio_request(text: str) -> bool:
     normalized = text.lower()
     return "portfolio" in normalized and any(word in normalized for word in ("website", "site", "web", "page", "app"))
 
 
-def should_collect_website_brief(text: str) -> bool:
-    normalized = text.lower()
-    if not _is_website_request(normalized):
-        return False
-
-    detail_markers = (
-        "about",
-        "booking",
-        "brand",
-        "business",
-        "contact",
-        "ecommerce",
-        "gallery",
-        "menu",
-        "portfolio",
-        "pricing",
-        "restaurant",
-        "school",
-        "services",
-        "shop",
-        "store",
-        "testimonials",
-        "for ",
-    )
-    if sum(marker in normalized for marker in detail_markers) >= 2:
-        return False
-
-    words = re.findall(r"[a-z0-9]+", normalized)
-    specific_words = [word for word in words if word not in GENERIC_WEBSITE_WORDS and len(word) > 2]
-    return len(specific_words) < 4
-
-
-def start_website_brief(user_request: str) -> str:
-    _save_pending_brief(
-        {
-            "kind": "website",
-            "original_request": user_request,
-            "created_at": datetime.now().isoformat(timespec="seconds"),
-        }
-    )
-    return (
-        "I can build it, but I need your website options first so it is not a random template.\n\n"
-        "Reply with these details:\n"
-        "1. Website type or business: portfolio, shop, restaurant, agency, gym, SaaS, etc.\n"
-        "2. Name/brand to show on the site.\n"
-        "3. Style: dark, light, luxury, minimal, colorful, tech, etc.\n"
-        "4. Sections needed: hero, services, pricing, gallery, contact, booking, testimonials, etc.\n"
-        "5. Main goal: get clients, sell products, show work, collect leads, book calls, etc.\n\n"
-        "After you answer, I will create the code in VS Code, save it under JX-JARVIS-Code with the time, and open a browser preview."
-    )
-
-
-def consume_pending_website_brief(text: str) -> str | None:
-    pending = _load_pending_brief()
-    if not pending or pending.get("kind") != "website":
-        return None
-
-    normalized = " ".join(text.lower().strip().split())
-    if normalized in {"cancel", "stop", "never mind", "nevermind"}:
-        _clear_pending_brief()
-        return None
-
-    if len(text.strip()) < 8:
-        return None
-
-    _clear_pending_brief()
-    original = str(pending.get("original_request") or "Create a website")
-    return (
-        f"{original}\n\n"
-        "User-approved website brief:\n"
-        f"{text.strip()}\n\n"
-        "Create a finished, custom website from this brief. Use the brand, sections, style, goal, and content direction from the user's answer. "
-        "Do not create a generic agency template unless the user asked for an agency."
-    )
-
-
-def _load_pending_brief() -> dict | None:
-    if not PENDING_BRIEF_PATH.exists():
-        return None
-    try:
-        data = json.loads(PENDING_BRIEF_PATH.read_text(encoding="utf-8"))
-    except (json.JSONDecodeError, OSError):
-        return None
-    if not isinstance(data, dict):
-        return None
-    return data
-
-
-def _save_pending_brief(payload: dict) -> None:
-    RUNTIME_DIR.mkdir(parents=True, exist_ok=True)
-    PENDING_BRIEF_PATH.write_text(json.dumps(payload, indent=2), encoding="utf-8")
-
-
-def _clear_pending_brief() -> None:
-    try:
-        PENDING_BRIEF_PATH.unlink(missing_ok=True)
-    except OSError:
-        pass
-
-
 def create_portfolio_project(user_request: str) -> str:
-    return guard_action(
-        "code.generate",
-        "create portfolio website project",
-        lambda: _create_portfolio_project(user_request),
-        path=CODE_ROOT,
-    )
+    from api.ai_provider import ask_ai_code_project
 
-
-def _create_portfolio_project(user_request: str) -> str:
-    project_dir = _new_project_dir("super-portfolio-website")
-    files = _portfolio_files()
-    written = _write_files(project_dir, files)
-    _write_project_readme(project_dir, user_request, "Premium responsive portfolio website.", written)
-    validation = validate_code_project(project_dir)
-    preview = _open_preview(project_dir)
-    opened = _open_in_vscode(project_dir)
-    open_text = "I opened it in a new VS Code window." if opened else "VS Code was unavailable or blocked, but the files are ready."
-    preview_text = " Browser preview opened." if preview else ""
-    summary = f"Super portfolio website created: {project_dir}. Files: index.html, styles.css, script.js. Validation: {validation}. {open_text}{preview_text}"
-    remember_project(project_dir.name, str(project_dir), summary)
-    return READY_RESPONSE
+    model_response = ask_ai_code_project(user_request)
+    return create_code_project(user_request, model_response)
 
 
 def create_code_project(user_request: str, model_response: str) -> str:
@@ -393,34 +253,78 @@ def create_code_project(user_request: str, model_response: str) -> str:
 
 
 def _create_code_project(user_request: str, model_response: str) -> str:
+    dedup_key = " ".join(user_request.lower().split())
+    now = datetime.now().timestamp()
+    previous = _RECENT_GENERATIONS.get(dedup_key)
+    if previous and now - previous[0] < _GENERATION_DEDUP_SECONDS:
+        return previous[1]
+
+    result = _create_code_project_from_response(user_request, model_response, allow_retry=True)
+    _RECENT_GENERATIONS[dedup_key] = (now, result)
+    return result
+
+
+def _create_code_project_from_response(user_request: str, model_response: str, allow_retry: bool) -> str:
     spec = _parse_project_spec(model_response)
     files = spec.get("files") if isinstance(spec.get("files"), list) else []
+    if _is_generation_error(spec, files):
+        return str(spec.get("summary") or "The AI provider failed to generate project files. Try a stronger coding provider in Settings.")
 
-    fallback = _quality_fallback_for_request(user_request, files)
-    if fallback:
-        project_name, summary, files = fallback
-        spec["summary"] = summary
-    else:
-        project_name = _safe_project_name(spec.get("project_name") or user_request)
+    if not files:
+        if allow_retry:
+            from api.ai_provider import ask_ai_code_project
+
+            retry_response = ask_ai_code_project(_retry_code_request(user_request, "The response did not include any writable files.", files))
+            return _create_code_project_from_response(user_request, retry_response, allow_retry=False)
+        repaired = _validated_repair_website_files(user_request, "The provider did not return any writable files.")
+        if repaired:
+            spec = {"project_name": _safe_project_name(user_request), "summary": "Repaired by generating project files one by one.", "files": repaired}
+            files = repaired
+        else:
+            return "The AI provider did not return writable project files. No project was created."
+
+    if not _has_usable_file_content(files):
+        if allow_retry:
+            from api.ai_provider import ask_ai_code_project
+
+            retry_response = ask_ai_code_project(_retry_code_request(user_request, "The file entries had empty code content.", files))
+            return _create_code_project_from_response(user_request, retry_response, allow_retry=False)
+        repaired = _validated_repair_website_files(user_request, "The provider returned file names with empty code content.")
+        if repaired:
+            spec = {"project_name": _safe_project_name(user_request), "summary": "Repaired by generating project files one by one.", "files": repaired}
+            files = repaired
+        else:
+            return "The AI returned file entries, but none had usable code content. No project files were written."
+
+    quality_warning = None
+    try:
+        _validate_generated_project(user_request, files)
+    except RuntimeError as error:
+        if allow_retry:
+            from api.ai_provider import ask_ai_code_project
+
+            retry_response = ask_ai_code_project(_retry_code_request(user_request, str(error), files))
+            return _create_code_project_from_response(user_request, retry_response, allow_retry=False)
+        repaired = _validated_repair_website_files(user_request, str(error))
+        if repaired:
+            spec = {"project_name": _safe_project_name(user_request), "summary": "Repaired by generating stronger project files one by one.", "files": repaired}
+            files = repaired
+            quality_warning = "The first AI output was incomplete, so Jarvis regenerated the files one by one."
+        else:
+            return f"The AI generated files, but they did not match your requested UI/theme: {error}"
+
+    project_name = _safe_project_name(spec.get("project_name") or user_request)
 
     project_dir = _new_project_dir(project_name)
     written = _write_files(project_dir, files)
 
     if not written:
-        fallback = project_dir / "README.md"
-        fallback.write_text(
-            "# JX JARVIS Code Output\n\n"
-            f"Request: {user_request}\n\n"
-            "Jarvis could not parse a file list, so the raw AI response is below.\n\n"
-            "```text\n"
-            f"{model_response[:MAX_FILE_CHARS]}\n"
-            "```\n",
-            encoding="utf-8",
-            newline="\n",
-        )
-        written.append(fallback)
+        return "The AI returned file entries, but none had usable code content. No project files were written."
 
-    _write_project_readme(project_dir, user_request, spec.get("summary"), written)
+    summary_text = spec.get("summary")
+    if quality_warning:
+        summary_text = f"{summary_text or 'Generated by configured AI provider.'} Quality warning: {quality_warning}"
+    _write_project_readme(project_dir, user_request, summary_text, written)
     validation = validate_code_project(project_dir)
     preview = _open_preview(project_dir)
     opened = _open_in_vscode(project_dir)
@@ -433,6 +337,1642 @@ def _create_code_project(user_request: str, model_response: str) -> str:
     summary = f"Code workspace created: {project_dir}. Files: {file_list}. Validation: {validation}. {open_text}{preview_text}"
     remember_project(project_dir.name, str(project_dir), summary)
     return READY_RESPONSE
+
+
+def _fallback_project_spec(user_request: str, reason: str) -> dict:
+    brief = _fallback_site_brief(user_request)
+    project_name = _safe_project_name(brief["brand"] or user_request)
+    return {
+        "project_name": project_name,
+        "summary": f"Built a prompt-specific fallback website because: {reason}",
+        "files": _fallback_website_files(user_request, brief),
+    }
+
+
+def _fallback_site_brief(user_request: str) -> dict:
+    normalized = user_request.lower()
+    if any(word in normalized for word in ("restaurant", "cafe", "food", "hotel", "menu", "dining")):
+        return {
+            "brand": _extract_named_brand(user_request) or "Restaurant Website",
+            "initials": "RW",
+            "eyebrow": "Premium restaurant website",
+            "headline": "Bring your dining experience online.",
+            "description": "A responsive restaurant website with a hero section, menu highlights, reservation-focused contact form, smooth animations, and a premium visual style.",
+            "primaryCta": "Reserve a table",
+            "secondaryCta": "View menu",
+            "cardText": "Menu cards, chef highlights, opening hours, and contact flow are arranged for real restaurant visitors.",
+            "featureHeading": "Built around menu, mood, and bookings.",
+            "features": [
+                {"icon": "🍽", "title": "Menu showcase", "body": "Highlight signature dishes, pricing cues, ingredients, and chef recommendations in polished cards."},
+                {"icon": "✦", "title": "Reservation flow", "body": "A styled contact form guides visitors to request tables, events, or private dining."},
+                {"icon": "⌁", "title": "Atmosphere-first design", "body": "Dark luxury colors, smooth reveals, and premium spacing create a memorable dining mood."},
+            ],
+            "aboutHeading": "A restaurant presence that feels premium.",
+            "aboutText": "This fallback follows your restaurant prompt instead of using a generic startup page. It includes restaurant-friendly sections, mobile navigation, responsive cards, and simple JavaScript interactions.",
+            "contactHeading": "Ready for bookings and enquiries.",
+            "contactMessage": "Tell us your date, time, guests, or event details",
+        }
+    if any(word in normalized for word in ("portfolio", "resume", "developer", "designer", "personal site")):
+        return {
+            "brand": _extract_named_brand(user_request) or "Portfolio Website",
+            "initials": "PW",
+            "eyebrow": "Modern portfolio website",
+            "headline": "Show your work with confidence.",
+            "description": "A responsive portfolio website with a bold hero, project cards, skill tags, about section, and a clean contact flow.",
+            "primaryCta": "Contact me",
+            "secondaryCta": "View work",
+            "cardText": "Project sections, skill highlights, and contact prompts are designed for showcasing real work.",
+            "featureHeading": "Built to present skills and projects.",
+            "features": [
+                {"icon": "▣", "title": "Project cards", "body": "Feature standout work with compact summaries, tags, and hover interactions."},
+                {"icon": "◆", "title": "Skill story", "body": "Use sharp tags and metrics to make capabilities easy to scan."},
+                {"icon": "✉", "title": "Contact ready", "body": "A polished form gives visitors a clear way to reach out."},
+            ],
+            "aboutHeading": "A polished personal brand surface.",
+            "aboutText": "This fallback is tuned for a portfolio prompt with work-focused sections, responsive layout, subtle motion, and separated HTML, CSS, and JavaScript.",
+            "contactHeading": "Start a conversation.",
+            "contactMessage": "Tell me about the role, project, or collaboration",
+        }
+    if any(word in normalized for word in ("shop", "store", "ecommerce", "e-commerce", "product")):
+        return {
+            "brand": _extract_named_brand(user_request) or "Shop Website",
+            "initials": "SW",
+            "eyebrow": "Modern ecommerce website",
+            "headline": "Make products feel irresistible.",
+            "description": "A product-focused website with featured items, benefit cards, conversion CTAs, smooth hover states, and a mobile-friendly layout.",
+            "primaryCta": "Shop now",
+            "secondaryCta": "See products",
+            "cardText": "Product grids, trust badges, and CTA sections are arranged for shopping and conversion.",
+            "featureHeading": "Built around products and trust.",
+            "features": [
+                {"icon": "◈", "title": "Product highlights", "body": "Showcase items with clean cards, pricing cues, and premium hover feedback."},
+                {"icon": "✓", "title": "Trust signals", "body": "Add delivery, support, and quality promises that help shoppers decide."},
+                {"icon": "↗", "title": "Conversion flow", "body": "Clear CTAs guide visitors from discovery to action."},
+            ],
+            "aboutHeading": "A storefront that feels clear and modern.",
+            "aboutText": "This fallback follows ecommerce prompts with product sections, responsive design, animated cards, and a styled contact/order enquiry form.",
+            "contactHeading": "Ask about an order.",
+            "contactMessage": "Tell us the product or order details",
+        }
+    if any(word in normalized for word in ("gym", "fitness", "trainer", "workout", "yoga")):
+        return {
+            "brand": _extract_named_brand(user_request) or "Fitness Website",
+            "initials": "FW",
+            "eyebrow": "High-energy fitness website",
+            "headline": "Turn energy into memberships.",
+            "description": "A bold fitness website with program cards, class highlights, coaching sections, animated CTAs, and mobile-first structure.",
+            "primaryCta": "Join now",
+            "secondaryCta": "View programs",
+            "cardText": "Programs, trainers, schedules, and membership actions are built into a premium responsive layout.",
+            "featureHeading": "Built for classes, coaching, and signups.",
+            "features": [
+                {"icon": "↯", "title": "Program cards", "body": "Display strength, cardio, yoga, and personal coaching offers clearly."},
+                {"icon": "●", "title": "Trainer focus", "body": "Show expertise, results, and social proof in a modern visual flow."},
+                {"icon": "➜", "title": "Signup CTAs", "body": "Guide visitors toward trials, memberships, and contact requests."},
+            ],
+            "aboutHeading": "A fitness brand with movement.",
+            "aboutText": "This fallback follows fitness prompts with energetic copy, responsive panels, motion, contact validation, and separated files.",
+            "contactHeading": "Book a trial session.",
+            "contactMessage": "Tell us your fitness goal",
+        }
+    if any(word in normalized for word in ("school", "college", "academy", "education", "course")):
+        return {
+            "brand": _extract_named_brand(user_request) or "Education Website",
+            "initials": "EW",
+            "eyebrow": "Modern education website",
+            "headline": "Make learning easy to explore.",
+            "description": "An education website with course highlights, admission CTAs, program cards, and responsive sections for students and parents.",
+            "primaryCta": "Apply now",
+            "secondaryCta": "View courses",
+            "cardText": "Course blocks, admission prompts, learning outcomes, and enquiry sections are ready to customize.",
+            "featureHeading": "Built for programs and admissions.",
+            "features": [
+                {"icon": "□", "title": "Course sections", "body": "Present programs, outcomes, and learning paths in clear responsive cards."},
+                {"icon": "◇", "title": "Admissions focus", "body": "Guide students and parents toward enquiry or application actions."},
+                {"icon": "✦", "title": "Trust layout", "body": "Use outcomes, faculty, and campus highlights to build confidence."},
+            ],
+            "aboutHeading": "A clearer way to present education.",
+            "aboutText": "This fallback follows education prompts with admissions-focused structure, responsive layout, and interactive JavaScript sections.",
+            "contactHeading": "Ask about admissions.",
+            "contactMessage": "Tell us the course or program you want",
+        }
+    return {
+        "brand": _extract_named_brand(user_request) or "Custom Website",
+        "initials": "CW",
+        "eyebrow": "Prompt-specific website",
+        "headline": _fallback_headline(user_request),
+        "description": "A responsive website generated from your prompt with separated HTML, CSS, and JavaScript files, modern sections, animations, and a styled contact flow.",
+        "primaryCta": "Get started",
+        "secondaryCta": "Explore",
+        "cardText": "The layout is built from the current prompt and can be edited directly in VS Code.",
+        "featureHeading": "Built from the request you typed.",
+        "features": [
+            {"icon": "✦", "title": "Prompt-first layout", "body": "Sections and copy are based on the current website request instead of a saved template."},
+            {"icon": "◈", "title": "Responsive structure", "body": "Navbar, hero, cards, about, contact, and footer adapt across screen sizes."},
+            {"icon": "↯", "title": "Interactive details", "body": "Mobile menu, reveal animations, hover effects, typing headline, and form validation are included."},
+        ],
+        "aboutHeading": "A custom starting point for this prompt.",
+        "aboutText": "This fallback is only used when the AI provider fails to return usable files. It still follows the current prompt and creates editable code.",
+        "contactHeading": "Send an enquiry.",
+        "contactMessage": "Tell us what you want to build",
+    }
+
+
+def _extract_named_brand(user_request: str) -> str:
+    patterns = (
+        r"\b(?:called|named|brand(?:ed)? as|name is)\s+([A-Za-z0-9 &'-]{2,36})",
+        r"\bfor\s+([A-Z][A-Za-z0-9 &'-]{2,36})",
+    )
+    blocked = {"restaurant", "website", "portfolio", "shop", "store", "gym", "school", "landing page"}
+    for pattern in patterns:
+        match = re.search(pattern, user_request)
+        if not match:
+            continue
+        brand = re.sub(r"\s+", " ", match.group(1)).strip(" .,-")
+        if brand.lower() not in blocked:
+            return brand[:36]
+    return ""
+
+
+def _fallback_headline(user_request: str) -> str:
+    normalized = user_request.lower()
+    if "dashboard" in normalized:
+        return "See every important signal clearly."
+    if "app" in normalized or "tool" in normalized:
+        return "Launch a clean interactive experience."
+    if "landing page" in normalized:
+        return "Turn first impressions into action."
+    return "Build a website that matches your idea."
+
+
+def _html_escape(value: object) -> str:
+    return str(value or "").replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;").replace('"', "&quot;")
+
+
+def _fallback_restaurant_files(user_request: str, brief: dict) -> list[dict[str, str]]:
+    brand = _html_escape(brief.get("brand") or "Restaurant Website")
+    initials = _html_escape(brief.get("initials") or "RW")
+    primary_cta = _html_escape(brief.get("primaryCta") or "Reserve a table")
+    request_text = _html_escape(re.sub(r"\s+", " ", user_request).strip())
+
+    html = f"""<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>{brand}</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@600;700;800&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+  <header class="topbar">
+    <a href="#home" class="brand"><span>{initials}</span>{brand}</a>
+    <button class="menu-button" data-menu-button aria-label="Open menu">Menu</button>
+    <nav class="nav" data-nav>
+      <a href="#menu">Menu</a>
+      <a href="#story">Story</a>
+      <a href="#gallery">Gallery</a>
+      <a href="#reserve">Reserve</a>
+    </nav>
+  </header>
+
+  <main>
+    <section class="hero" id="home">
+      <div class="hero-media" aria-hidden="true">
+        <div class="plate plate-one"></div>
+        <div class="plate plate-two"></div>
+        <div class="steam steam-one"></div>
+        <div class="steam steam-two"></div>
+      </div>
+      <div class="hero-content">
+        <p class="kicker">Fine dining • Fresh ingredients • Memorable nights</p>
+        <h1>Restaurant experiences that guests remember.</h1>
+        <p class="lead">{request_text}</p>
+        <div class="hero-actions">
+          <a class="btn primary" href="#reserve">{primary_cta}</a>
+          <a class="btn secondary" href="#menu">Explore menu</a>
+        </div>
+      </div>
+      <aside class="hours-card">
+        <span>Open today</span>
+        <strong>12:00 PM - 11:30 PM</strong>
+        <p>Chef tasting menu, family tables, and private dining available.</p>
+      </aside>
+    </section>
+
+    <section class="menu-section" id="menu">
+      <div class="section-title">
+        <p class="kicker">Signature menu</p>
+        <h2>Curated dishes with rich flavor and premium plating.</h2>
+      </div>
+      <div class="menu-filters" data-menu-filters></div>
+      <div class="menu-grid" data-menu-grid></div>
+    </section>
+
+    <section class="story-section" id="story">
+      <div>
+        <p class="kicker">Our story</p>
+        <h2>Warm ambience, precise service, and food made for slow evenings.</h2>
+      </div>
+      <p>
+        This restaurant website is structured around real dining needs: menu discovery, table reservation,
+        opening hours, chef specials, ambience photos, and quick contact. The design uses a luxury restaurant
+        mood instead of a tech startup layout.
+      </p>
+      <div class="stats">
+        <div><strong>24</strong><span>Signature dishes</span></div>
+        <div><strong>4.8</strong><span>Guest rating</span></div>
+        <div><strong>7</strong><span>Days open</span></div>
+      </div>
+    </section>
+
+    <section class="gallery-section" id="gallery">
+      <div class="gallery-card wide"><span>Chef's table</span></div>
+      <div class="gallery-card"><span>Fresh pasta</span></div>
+      <div class="gallery-card"><span>Grill specials</span></div>
+      <div class="gallery-card tall"><span>Private dining</span></div>
+    </section>
+
+    <section class="reserve-section" id="reserve">
+      <div class="section-title">
+        <p class="kicker">Reservations</p>
+        <h2>Book a table or plan a private dining night.</h2>
+      </div>
+      <form class="reservation-form" data-reservation-form>
+        <label>Name<input name="name" type="text" placeholder="Your name" required /></label>
+        <label>Email<input name="email" type="email" placeholder="you@example.com" required /></label>
+        <label>Guests<input name="guests" type="number" min="1" max="24" value="2" required /></label>
+        <label>Date<input name="date" type="date" required /></label>
+        <label class="full">Notes<textarea name="notes" placeholder="Time, occasion, seating preference"></textarea></label>
+        <button class="btn primary" type="submit">Request reservation</button>
+        <p class="form-status" data-form-status></p>
+      </form>
+    </section>
+  </main>
+
+  <footer class="footer">
+    <p>{brand} • Premium restaurant website</p>
+    <div><a href="#menu">Menu</a><a href="#reserve">Reserve</a><a href="#home">Back top</a></div>
+  </footer>
+
+  <script src="script.js"></script>
+</body>
+</html>
+"""
+
+    css = """* {
+  box-sizing: border-box;
+}
+
+:root {
+  color-scheme: dark;
+  --bg: #110d0a;
+  --panel: #1d1510;
+  --cream: #fff0d2;
+  --muted: #c9ac86;
+  --gold: #d59b43;
+  --ember: #bb3f24;
+  --wine: #501c1c;
+  --line: rgba(255, 240, 210, .16);
+}
+
+html {
+  scroll-behavior: smooth;
+}
+
+body {
+  margin: 0;
+  min-height: 100vh;
+  font-family: Inter, system-ui, sans-serif;
+  color: var(--cream);
+  background:
+    radial-gradient(circle at 12% 18%, rgba(187, 63, 36, .28), transparent 28%),
+    radial-gradient(circle at 82% 8%, rgba(213, 155, 67, .18), transparent 24%),
+    linear-gradient(135deg, #110d0a 0%, #21120d 48%, #0e0b09 100%);
+}
+
+a {
+  color: inherit;
+  text-decoration: none;
+}
+
+.topbar {
+  position: sticky;
+  top: 0;
+  z-index: 20;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  width: min(1160px, calc(100% - 32px));
+  margin: 18px auto;
+  padding: 14px 16px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: rgba(17, 13, 10, .78);
+  backdrop-filter: blur(18px);
+}
+
+.brand {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  font-weight: 800;
+}
+
+.brand span {
+  display: grid;
+  place-items: center;
+  width: 38px;
+  height: 38px;
+  border-radius: 50%;
+  background: var(--gold);
+  color: #1a1009;
+}
+
+.nav {
+  display: flex;
+  gap: 8px;
+}
+
+.nav a {
+  padding: 10px 14px;
+  border-radius: 999px;
+  color: var(--muted);
+}
+
+.nav a:hover {
+  background: rgba(255, 240, 210, .08);
+  color: var(--cream);
+}
+
+.menu-button {
+  display: none;
+}
+
+.hero {
+  position: relative;
+  width: min(1160px, calc(100% - 32px));
+  min-height: 720px;
+  margin: 0 auto 28px;
+  display: grid;
+  grid-template-columns: 1.05fr .95fr;
+  align-items: center;
+  gap: 40px;
+  overflow: hidden;
+}
+
+.hero-content {
+  position: relative;
+  z-index: 2;
+}
+
+.kicker {
+  margin: 0 0 14px;
+  color: var(--gold);
+  text-transform: uppercase;
+  letter-spacing: .15em;
+  font-size: 12px;
+  font-weight: 800;
+}
+
+h1, h2 {
+  font-family: "Playfair Display", Georgia, serif;
+  line-height: .98;
+  letter-spacing: 0;
+}
+
+h1 {
+  max-width: 720px;
+  margin: 0;
+  font-size: clamp(58px, 8.5vw, 118px);
+}
+
+h2 {
+  margin: 0;
+  font-size: clamp(36px, 5vw, 72px);
+}
+
+.lead {
+  max-width: 620px;
+  color: var(--muted);
+  font-size: 18px;
+  line-height: 1.8;
+}
+
+.hero-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  margin-top: 28px;
+}
+
+.btn {
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  padding: 14px 20px;
+  font-weight: 800;
+  cursor: pointer;
+  transition: transform .2s ease, background .2s ease;
+}
+
+.btn:hover {
+  transform: translateY(-2px);
+}
+
+.btn.primary {
+  background: var(--gold);
+  color: #1a1009;
+}
+
+.btn.secondary {
+  color: var(--cream);
+  background: rgba(255, 240, 210, .08);
+}
+
+.hero-media {
+  position: relative;
+  min-height: 560px;
+}
+
+.plate {
+  position: absolute;
+  border-radius: 50%;
+  background:
+    radial-gradient(circle at 50% 50%, #2a1710 0 22%, #f0d19a 23% 27%, #553021 28% 54%, #190f0b 55% 100%);
+  box-shadow: 0 38px 90px rgba(0,0,0,.46);
+}
+
+.plate-one {
+  width: 420px;
+  height: 420px;
+  top: 40px;
+  right: 20px;
+}
+
+.plate-two {
+  width: 230px;
+  height: 230px;
+  left: 20px;
+  bottom: 60px;
+  opacity: .85;
+}
+
+.steam {
+  position: absolute;
+  width: 90px;
+  height: 180px;
+  border-left: 3px solid rgba(255, 240, 210, .22);
+  border-radius: 50%;
+  animation: steam 3.8s ease-in-out infinite;
+}
+
+.steam-one { top: 8px; right: 200px; }
+.steam-two { top: 36px; right: 125px; animation-delay: -1.4s; }
+
+.hours-card {
+  position: absolute;
+  right: 28px;
+  bottom: 38px;
+  max-width: 330px;
+  padding: 22px;
+  border: 1px solid var(--line);
+  border-radius: 24px;
+  background: rgba(29, 21, 16, .78);
+  backdrop-filter: blur(18px);
+}
+
+.hours-card span, .hours-card p {
+  color: var(--muted);
+}
+
+.hours-card strong {
+  display: block;
+  margin: 8px 0;
+  font-size: 24px;
+}
+
+.menu-section, .story-section, .reserve-section, .gallery-section {
+  width: min(1160px, calc(100% - 32px));
+  margin: 30px auto;
+  padding: clamp(30px, 5vw, 68px);
+  border: 1px solid var(--line);
+  border-radius: 34px;
+  background: rgba(29, 21, 16, .72);
+}
+
+.section-title {
+  max-width: 820px;
+  margin-bottom: 28px;
+}
+
+.menu-filters {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin-bottom: 22px;
+}
+
+.filter-button {
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  padding: 10px 14px;
+  background: transparent;
+  color: var(--muted);
+  cursor: pointer;
+}
+
+.filter-button.active {
+  background: var(--cream);
+  color: #1a1009;
+}
+
+.menu-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 18px;
+}
+
+.dish-card {
+  min-height: 260px;
+  padding: 20px;
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-end;
+  border: 1px solid var(--line);
+  border-radius: 28px;
+  background:
+    linear-gradient(to top, rgba(17,13,10,.95), rgba(17,13,10,.12)),
+    radial-gradient(circle at 50% 25%, rgba(213,155,67,.32), transparent 36%),
+    var(--wine);
+  transition: transform .22s ease, border-color .22s ease;
+}
+
+.dish-card:hover {
+  transform: translateY(-8px);
+  border-color: rgba(213,155,67,.75);
+}
+
+.dish-card h3 {
+  margin: 0 0 8px;
+  font-size: 24px;
+}
+
+.dish-card p {
+  color: var(--muted);
+  line-height: 1.6;
+}
+
+.dish-meta {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  color: var(--gold);
+  font-weight: 800;
+}
+
+.story-section {
+  display: grid;
+  grid-template-columns: .9fr 1.1fr;
+  gap: 40px;
+  align-items: center;
+}
+
+.story-section > p {
+  color: var(--muted);
+  font-size: 18px;
+  line-height: 1.9;
+}
+
+.stats {
+  grid-column: 1 / -1;
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 14px;
+}
+
+.stats div {
+  padding: 20px;
+  border: 1px solid var(--line);
+  border-radius: 24px;
+  background: rgba(255,240,210,.06);
+}
+
+.stats strong {
+  display: block;
+  font-family: "Playfair Display", Georgia, serif;
+  font-size: 48px;
+}
+
+.stats span {
+  color: var(--muted);
+}
+
+.gallery-section {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  grid-auto-rows: 220px;
+  gap: 16px;
+}
+
+.gallery-card {
+  position: relative;
+  overflow: hidden;
+  border-radius: 28px;
+  background-image:
+    linear-gradient(to top, rgba(17,13,10,.9), transparent),
+    radial-gradient(circle at 50% 30%, rgba(213,155,67,.36), transparent 35%),
+    linear-gradient(135deg, #442115, #130d0a);
+}
+
+.gallery-card.wide {
+  grid-column: span 2;
+}
+
+.gallery-card.tall {
+  grid-row: span 2;
+}
+
+.gallery-card span {
+  position: absolute;
+  left: 18px;
+  bottom: 18px;
+  font-weight: 800;
+}
+
+.reservation-form {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 16px;
+}
+
+.reservation-form label {
+  display: grid;
+  gap: 8px;
+  color: var(--muted);
+  font-weight: 700;
+}
+
+.reservation-form .full {
+  grid-column: 1 / -1;
+}
+
+input, textarea {
+  width: 100%;
+  border: 1px solid var(--line);
+  border-radius: 18px;
+  background: rgba(17,13,10,.64);
+  color: var(--cream);
+  padding: 14px 15px;
+  font: inherit;
+  outline: none;
+}
+
+textarea {
+  min-height: 120px;
+  resize: vertical;
+}
+
+input:focus, textarea:focus {
+  border-color: var(--gold);
+  box-shadow: 0 0 0 4px rgba(213,155,67,.12);
+}
+
+.form-status {
+  min-height: 22px;
+  color: var(--gold);
+}
+
+.footer {
+  width: min(1160px, calc(100% - 32px));
+  margin: 30px auto 42px;
+  display: flex;
+  justify-content: space-between;
+  gap: 18px;
+  color: var(--muted);
+}
+
+.footer div {
+  display: flex;
+  gap: 16px;
+}
+
+@keyframes steam {
+  0%, 100% { transform: translateY(20px) scale(.9); opacity: .15; }
+  50% { transform: translateY(-18px) scale(1.1); opacity: .55; }
+}
+
+@media (max-width: 860px) {
+  .topbar {
+    border-radius: 24px;
+    align-items: flex-start;
+  }
+
+  .menu-button {
+    display: block;
+    border: 1px solid var(--line);
+    border-radius: 999px;
+    background: transparent;
+    color: var(--cream);
+    padding: 10px 14px;
+  }
+
+  .nav {
+    position: absolute;
+    top: calc(100% + 8px);
+    left: 0;
+    right: 0;
+    display: none;
+    flex-direction: column;
+    padding: 14px;
+    border: 1px solid var(--line);
+    border-radius: 24px;
+    background: rgba(17,13,10,.96);
+  }
+
+  .nav.open {
+    display: flex;
+  }
+
+  .hero, .story-section {
+    grid-template-columns: 1fr;
+  }
+
+  .hero {
+    min-height: auto;
+    padding-top: 30px;
+  }
+
+  .hero-media {
+    min-height: 360px;
+    order: -1;
+  }
+
+  .plate-one {
+    width: 320px;
+    height: 320px;
+  }
+
+  .hours-card {
+    position: static;
+    margin-top: 18px;
+  }
+
+  .menu-grid, .stats, .reservation-form {
+    grid-template-columns: 1fr;
+  }
+
+  .gallery-section {
+    grid-template-columns: 1fr;
+  }
+
+  .gallery-card.wide, .gallery-card.tall {
+    grid-column: auto;
+    grid-row: auto;
+  }
+
+  .footer {
+    flex-direction: column;
+  }
+}
+"""
+
+    js = """const dishes = [
+  { category: "Starters", name: "Charred Paneer Skewers", price: "₹280", detail: "Smoked spices, mint yoghurt, pickled onion." },
+  { category: "Starters", name: "Crispy Calamari", price: "₹360", detail: "Lemon aioli, chilli dust, fresh herbs." },
+  { category: "Mains", name: "Truffle Mushroom Risotto", price: "₹520", detail: "Arborio rice, parmesan, roasted mushrooms." },
+  { category: "Mains", name: "Coastal Grill Platter", price: "₹740", detail: "Seasonal seafood, herb butter, grilled vegetables." },
+  { category: "Desserts", name: "Saffron Panna Cotta", price: "₹260", detail: "Pistachio crumb, rose syrup, citrus zest." },
+  { category: "Drinks", name: "Smoked Citrus Cooler", price: "₹190", detail: "Orange, lime, soda, smoked rosemary." },
+];
+
+const nav = document.querySelector("[data-nav]");
+const menuButton = document.querySelector("[data-menu-button]");
+const filters = document.querySelector("[data-menu-filters]");
+const menuGrid = document.querySelector("[data-menu-grid]");
+const form = document.querySelector("[data-reservation-form]");
+const statusText = document.querySelector("[data-form-status]");
+
+menuButton?.addEventListener("click", () => nav?.classList.toggle("open"));
+document.querySelectorAll(".nav a").forEach((link) => link.addEventListener("click", () => nav?.classList.remove("open")));
+
+function renderFilters() {
+  const categories = ["All", ...new Set(dishes.map((dish) => dish.category))];
+  filters.innerHTML = categories.map((category, index) => `
+    <button class="filter-button ${index === 0 ? "active" : ""}" type="button" data-category="${category}">${category}</button>
+  `).join("");
+
+  filters.querySelectorAll("button").forEach((button) => {
+    button.addEventListener("click", () => {
+      filters.querySelectorAll("button").forEach((item) => item.classList.remove("active"));
+      button.classList.add("active");
+      renderMenu(button.dataset.category);
+    });
+  });
+}
+
+function renderMenu(category = "All") {
+  const visible = category === "All" ? dishes : dishes.filter((dish) => dish.category === category);
+  menuGrid.innerHTML = visible.map((dish) => `
+    <article class="dish-card">
+      <div class="dish-meta"><span>${dish.category}</span><span>${dish.price}</span></div>
+      <h3>${dish.name}</h3>
+      <p>${dish.detail}</p>
+    </article>
+  `).join("");
+}
+
+form?.addEventListener("submit", (event) => {
+  event.preventDefault();
+  const data = new FormData(form);
+  const name = String(data.get("name") || "").trim();
+  const email = String(data.get("email") || "").trim();
+  const guests = Number(data.get("guests") || 0);
+  const date = String(data.get("date") || "").trim();
+
+  if (!name || !email.includes("@") || guests < 1 || !date) {
+    statusText.textContent = "Please add a valid name, email, guest count, and date.";
+    return;
+  }
+
+  form.reset();
+  statusText.textContent = `Reservation request received for ${name}. We will confirm by email.`;
+});
+
+renderFilters();
+renderMenu();
+"""
+
+    return [
+        {"path": "index.html", "content": html},
+        {"path": "style.css", "content": css},
+        {"path": "script.js", "content": js},
+    ]
+
+
+def _fallback_website_files(user_request: str, brief: dict) -> list[dict[str, str]]:
+    if "restaurant" in str(brief.get("eyebrow", "")).lower():
+        return _fallback_restaurant_files(user_request, brief)
+
+    request_text = re.sub(r"\s+", " ", user_request).strip()
+    safe_request = _html_escape(request_text)
+    features_json = json.dumps(brief["features"], ensure_ascii=False)
+    html = """<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>__BRAND__</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+  <div class="loading-screen" data-loader>
+    <div class="loader-ring"></div>
+    <span>Initializing interface</span>
+  </div>
+
+  <header class="site-header">
+    <a href="#home" class="brand" aria-label="__BRAND__ home">
+      <span class="brand-mark">__INITIALS__</span>
+      <span>__BRAND__</span>
+    </a>
+    <button class="menu-toggle" data-menu-toggle aria-label="Toggle navigation">
+      <span></span><span></span><span></span>
+    </button>
+    <nav class="nav-links" data-nav>
+      <a href="#home">Home</a>
+      <a href="#features">Features</a>
+      <a href="#about">About</a>
+      <a href="#contact">Contact</a>
+    </nav>
+  </header>
+
+  <main>
+    <section class="hero section-panel" id="home">
+      <div class="orb orb-one"></div>
+      <div class="orb orb-two"></div>
+      <div class="hero-copy reveal">
+        <p class="eyebrow">__EYEBROW__</p>
+        <h1><span data-typing></span><span class="cursor">|</span></h1>
+        <p class="hero-description">
+          __DESCRIPTION__
+        </p>
+        <div class="hero-actions">
+          <a class="button primary" href="#contact">__PRIMARY_CTA__</a>
+          <a class="button ghost" href="#features">__SECONDARY_CTA__</a>
+        </div>
+      </div>
+      <div class="hero-card reveal">
+        <div class="card-toolbar"><span></span><span></span><span></span></div>
+        <div class="signal-grid">
+          <div><strong>98%</strong><span>UI polish</span></div>
+          <div><strong>24ms</strong><span>Motion feel</span></div>
+          <div><strong>3x</strong><span>Launch speed</span></div>
+        </div>
+        <div class="glow-line"></div>
+        <p>__CARD_TEXT__</p>
+      </div>
+    </section>
+
+    <section class="section-panel features" id="features">
+      <div class="section-heading reveal">
+        <p class="eyebrow">Feature system</p>
+        <h2>__FEATURE_HEADING__</h2>
+      </div>
+      <div class="feature-grid" data-feature-grid></div>
+    </section>
+
+    <section class="section-panel about" id="about">
+      <div class="about-copy reveal">
+        <p class="eyebrow">About</p>
+        <h2>__ABOUT_HEADING__</h2>
+        <p>
+          __ABOUT_TEXT__
+        </p>
+        <div class="skill-tags">
+          <button>HTML</button><button>CSS Grid</button><button>JavaScript</button><button>Animations</button><button>Responsive</button>
+        </div>
+      </div>
+      <div class="about-meter reveal">
+        <div class="meter-row"><span>Design</span><strong>95</strong></div>
+        <div class="meter"><span style="width:95%"></span></div>
+        <div class="meter-row"><span>Speed</span><strong>91</strong></div>
+        <div class="meter"><span style="width:91%"></span></div>
+        <div class="meter-row"><span>Conversion</span><strong>88</strong></div>
+        <div class="meter"><span style="width:88%"></span></div>
+      </div>
+    </section>
+
+    <section class="section-panel contact" id="contact">
+      <div class="section-heading reveal">
+        <p class="eyebrow">Contact</p>
+        <h2>__CONTACT_HEADING__</h2>
+      </div>
+      <form class="contact-form reveal" data-contact-form>
+        <label>Name<input name="name" type="text" placeholder="Your name" required /></label>
+        <label>Email<input name="email" type="email" placeholder="you@example.com" required /></label>
+        <label>Message<textarea name="message" placeholder="__CONTACT_MESSAGE__" required></textarea></label>
+        <button class="button primary" type="submit">Submit request</button>
+        <p class="form-status" data-form-status></p>
+      </form>
+    </section>
+  </main>
+
+  <footer class="site-footer">
+    <p>Copyright 2026 __BRAND__. Built by JX Jarvis.</p>
+    <div><a href="#home">Top</a><a href="#features">Features</a><a href="#contact">Contact</a></div>
+  </footer>
+
+  <script src="script.js"></script>
+</body>
+</html>
+"""
+    replacements = {
+        "__REQUEST__": safe_request,
+        "__BRAND__": _html_escape(brief["brand"]),
+        "__INITIALS__": _html_escape(brief["initials"]),
+        "__EYEBROW__": _html_escape(brief["eyebrow"]),
+        "__DESCRIPTION__": _html_escape(brief["description"]),
+        "__PRIMARY_CTA__": _html_escape(brief["primaryCta"]),
+        "__SECONDARY_CTA__": _html_escape(brief["secondaryCta"]),
+        "__CARD_TEXT__": _html_escape(brief["cardText"]),
+        "__FEATURE_HEADING__": _html_escape(brief["featureHeading"]),
+        "__ABOUT_HEADING__": _html_escape(brief["aboutHeading"]),
+        "__ABOUT_TEXT__": _html_escape(brief["aboutText"]),
+        "__CONTACT_HEADING__": _html_escape(brief["contactHeading"]),
+        "__CONTACT_MESSAGE__": _html_escape(brief["contactMessage"]),
+    }
+    for source, target in replacements.items():
+        html = html.replace(source, target)
+
+    css = """* {
+  box-sizing: border-box;
+}
+
+:root {
+  color-scheme: dark;
+  --bg: #050713;
+  --panel: rgba(255, 255, 255, 0.075);
+  --panel-strong: rgba(255, 255, 255, 0.12);
+  --line: rgba(255, 255, 255, 0.16);
+  --text: #f5f7fb;
+  --muted: #a7b2c7;
+  --cyan: #18e3ff;
+  --pink: #ff4ecd;
+  --green: #6dffb3;
+  --shadow: 0 26px 80px rgba(0, 0, 0, 0.42);
+}
+
+html {
+  scroll-behavior: smooth;
+}
+
+body {
+  margin: 0;
+  min-height: 100vh;
+  font-family: Inter, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  color: var(--text);
+  background-color: var(--bg);
+  background-image:
+    radial-gradient(circle at 15% 8%, rgba(24, 227, 255, 0.22), transparent 28%),
+    radial-gradient(circle at 82% 12%, rgba(255, 78, 205, 0.18), transparent 25%),
+    linear-gradient(135deg, #050713 0%, #0b1326 52%, #070816 100%);
+  overflow-x: hidden;
+}
+
+body::before {
+  content: "";
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  background-image:
+    linear-gradient(rgba(255,255,255,.035) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(255,255,255,.035) 1px, transparent 1px);
+  background-size: 58px 58px;
+  mask-image: linear-gradient(to bottom, black, transparent 75%);
+}
+
+a {
+  color: inherit;
+  text-decoration: none;
+}
+
+.loading-screen {
+  position: fixed;
+  inset: 0;
+  z-index: 100;
+  display: grid;
+  place-items: center;
+  gap: 16px;
+  background: #050713;
+  transition: opacity .55s ease, visibility .55s ease;
+}
+
+.loading-screen.hidden {
+  opacity: 0;
+  visibility: hidden;
+}
+
+.loader-ring {
+  width: 58px;
+  height: 58px;
+  border-radius: 50%;
+  border: 3px solid rgba(255,255,255,.12);
+  border-top-color: var(--cyan);
+  animation: spin 1s linear infinite;
+}
+
+.site-header {
+  position: sticky;
+  top: 0;
+  z-index: 20;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  width: min(1180px, calc(100% - 32px));
+  margin: 18px auto 0;
+  padding: 14px;
+  border: 1px solid var(--line);
+  border-radius: 22px;
+  background: rgba(8, 12, 27, .68);
+  backdrop-filter: blur(18px);
+  box-shadow: var(--shadow);
+}
+
+.brand {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  font-weight: 800;
+}
+
+.brand-mark {
+  display: grid;
+  place-items: center;
+  width: 38px;
+  height: 38px;
+  border-radius: 14px;
+  background: linear-gradient(135deg, var(--cyan), var(--pink));
+  color: #06101d;
+}
+
+.nav-links {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.nav-links a {
+  padding: 10px 13px;
+  border-radius: 14px;
+  color: var(--muted);
+  transition: color .2s ease, background .2s ease;
+}
+
+.nav-links a:hover {
+  color: var(--text);
+  background: rgba(255,255,255,.08);
+}
+
+.menu-toggle {
+  display: none;
+  width: 42px;
+  height: 42px;
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  background: rgba(255,255,255,.06);
+}
+
+.menu-toggle span {
+  display: block;
+  width: 18px;
+  height: 2px;
+  margin: 4px auto;
+  background: var(--text);
+}
+
+.section-panel {
+  position: relative;
+  width: min(1180px, calc(100% - 32px));
+  margin: 22px auto;
+  padding: clamp(34px, 6vw, 80px);
+  border: 1px solid var(--line);
+  border-radius: 28px;
+  background: linear-gradient(145deg, rgba(255,255,255,.095), rgba(255,255,255,.035));
+  box-shadow: var(--shadow);
+  overflow: hidden;
+}
+
+.hero {
+  min-height: 720px;
+  display: grid;
+  grid-template-columns: minmax(0, 1.05fr) minmax(300px, .8fr);
+  align-items: center;
+  gap: 42px;
+}
+
+.eyebrow {
+  margin: 0 0 12px;
+  color: var(--green);
+  text-transform: uppercase;
+  letter-spacing: .16em;
+  font-size: 12px;
+  font-weight: 800;
+}
+
+h1, h2 {
+  margin: 0;
+  letter-spacing: 0;
+  line-height: 1.02;
+}
+
+h1 {
+  min-height: 174px;
+  font-size: clamp(52px, 8vw, 104px);
+}
+
+h2 {
+  font-size: clamp(34px, 5vw, 64px);
+}
+
+.cursor {
+  color: var(--cyan);
+  animation: blink .8s infinite;
+}
+
+.hero-description, .about-copy p {
+  max-width: 690px;
+  color: var(--muted);
+  font-size: 18px;
+  line-height: 1.8;
+}
+
+.hero-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  margin-top: 28px;
+}
+
+.button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 48px;
+  padding: 0 18px;
+  border: 1px solid var(--line);
+  border-radius: 16px;
+  font-weight: 800;
+  transition: transform .2s ease, box-shadow .2s ease, background .2s ease;
+}
+
+.button:hover {
+  transform: translateY(-2px);
+}
+
+.button.primary {
+  background: linear-gradient(135deg, var(--cyan), var(--pink));
+  color: #06101d;
+  box-shadow: 0 18px 46px rgba(24, 227, 255, .18);
+}
+
+.button.ghost {
+  background: rgba(255,255,255,.055);
+  color: var(--text);
+}
+
+.hero-card {
+  min-height: 360px;
+  padding: 24px;
+  border: 1px solid var(--line);
+  border-radius: 24px;
+  background: rgba(2, 8, 23, .46);
+  backdrop-filter: blur(22px);
+}
+
+.card-toolbar {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 30px;
+}
+
+.card-toolbar span {
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  background: var(--cyan);
+}
+
+.card-toolbar span:nth-child(2) { background: var(--pink); }
+.card-toolbar span:nth-child(3) { background: var(--green); }
+
+.signal-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 12px;
+}
+
+.signal-grid div, .feature-card, .about-meter, .contact-form {
+  border: 1px solid var(--line);
+  border-radius: 20px;
+  background: rgba(255,255,255,.06);
+}
+
+.signal-grid div {
+  padding: 16px;
+}
+
+.signal-grid strong {
+  display: block;
+  font-size: 28px;
+}
+
+.signal-grid span, .hero-card p {
+  color: var(--muted);
+}
+
+.glow-line {
+  height: 3px;
+  margin: 30px 0;
+  border-radius: 999px;
+  background: linear-gradient(90deg, var(--cyan), var(--pink), var(--green));
+  box-shadow: 0 0 30px rgba(24,227,255,.45);
+}
+
+.orb {
+  position: absolute;
+  width: 210px;
+  height: 210px;
+  border-radius: 999px;
+  filter: blur(6px);
+  opacity: .55;
+  animation: float 8s ease-in-out infinite;
+}
+
+.orb-one {
+  top: 80px;
+  right: 18%;
+  background: radial-gradient(circle, rgba(24,227,255,.45), transparent 68%);
+}
+
+.orb-two {
+  bottom: 70px;
+  left: 10%;
+  background: radial-gradient(circle, rgba(255,78,205,.36), transparent 68%);
+  animation-delay: -3s;
+}
+
+.section-heading {
+  max-width: 760px;
+  margin-bottom: 28px;
+}
+
+.feature-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 18px;
+}
+
+.feature-card {
+  padding: 24px;
+  min-height: 230px;
+  transition: transform .24s ease, border-color .24s ease, background .24s ease;
+}
+
+.feature-card:hover {
+  transform: translateY(-8px);
+  border-color: rgba(24,227,255,.55);
+  background: rgba(24,227,255,.08);
+}
+
+.feature-icon {
+  display: grid;
+  place-items: center;
+  width: 50px;
+  height: 50px;
+  margin-bottom: 20px;
+  border-radius: 18px;
+  background: linear-gradient(135deg, rgba(24,227,255,.22), rgba(255,78,205,.18));
+  font-size: 24px;
+}
+
+.feature-card p {
+  color: var(--muted);
+  line-height: 1.7;
+}
+
+.about {
+  display: grid;
+  grid-template-columns: 1fr .82fr;
+  gap: 34px;
+  align-items: center;
+}
+
+.skill-tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin-top: 24px;
+}
+
+.skill-tags button {
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: rgba(255,255,255,.06);
+  color: var(--text);
+  padding: 10px 14px;
+}
+
+.about-meter {
+  padding: 24px;
+}
+
+.meter-row {
+  display: flex;
+  justify-content: space-between;
+  margin: 18px 0 8px;
+}
+
+.meter {
+  height: 12px;
+  border-radius: 999px;
+  background: rgba(255,255,255,.08);
+  overflow: hidden;
+}
+
+.meter span {
+  display: block;
+  height: 100%;
+  border-radius: inherit;
+  background: linear-gradient(90deg, var(--cyan), var(--pink));
+}
+
+.contact-form {
+  display: grid;
+  gap: 16px;
+  padding: 24px;
+}
+
+.contact-form label {
+  display: grid;
+  gap: 8px;
+  color: var(--muted);
+  font-weight: 700;
+}
+
+.contact-form input, .contact-form textarea {
+  width: 100%;
+  border: 1px solid var(--line);
+  border-radius: 16px;
+  background: rgba(0,0,0,.22);
+  color: var(--text);
+  padding: 14px 15px;
+  font: inherit;
+  outline: none;
+}
+
+.contact-form textarea {
+  min-height: 130px;
+  resize: vertical;
+}
+
+.contact-form input:focus, .contact-form textarea:focus {
+  border-color: var(--cyan);
+  box-shadow: 0 0 0 4px rgba(24,227,255,.1);
+}
+
+.form-status {
+  min-height: 24px;
+  margin: 0;
+  color: var(--green);
+}
+
+.site-footer {
+  display: flex;
+  justify-content: space-between;
+  width: min(1180px, calc(100% - 32px));
+  margin: 18px auto 32px;
+  color: var(--muted);
+}
+
+.site-footer div {
+  display: flex;
+  gap: 16px;
+}
+
+.reveal {
+  opacity: 0;
+  transform: translateY(22px);
+  transition: opacity .65s ease, transform .65s ease;
+}
+
+.reveal.visible {
+  opacity: 1;
+  transform: translateY(0);
+}
+
+@keyframes spin { to { transform: rotate(360deg); } }
+@keyframes blink { 50% { opacity: 0; } }
+@keyframes float {
+  0%, 100% { transform: translateY(0) scale(1); }
+  50% { transform: translateY(-22px) scale(1.04); }
+}
+
+@media (max-width: 860px) {
+  .site-header {
+    align-items: flex-start;
+  }
+  .menu-toggle {
+    display: block;
+  }
+  .nav-links {
+    position: absolute;
+    top: calc(100% + 10px);
+    left: 0;
+    right: 0;
+    display: none;
+    flex-direction: column;
+    align-items: stretch;
+    padding: 14px;
+    border: 1px solid var(--line);
+    border-radius: 20px;
+    background: rgba(8, 12, 27, .94);
+  }
+  .nav-links.open {
+    display: flex;
+  }
+  .hero, .about {
+    grid-template-columns: 1fr;
+  }
+  .feature-grid {
+    grid-template-columns: 1fr;
+  }
+  h1 {
+    min-height: 150px;
+  }
+  .site-footer {
+    flex-direction: column;
+    gap: 10px;
+  }
+}
+"""
+
+    js = """const features = __FEATURES_JSON__;
+
+const loader = document.querySelector("[data-loader]");
+const nav = document.querySelector("[data-nav]");
+const menuToggle = document.querySelector("[data-menu-toggle]");
+const typingTarget = document.querySelector("[data-typing]");
+const featureGrid = document.querySelector("[data-feature-grid]");
+const contactForm = document.querySelector("[data-contact-form]");
+const formStatus = document.querySelector("[data-form-status]");
+const headline = __HEADLINE_JSON__;
+
+window.addEventListener("load", () => {
+  setTimeout(() => loader?.classList.add("hidden"), 550);
+});
+
+menuToggle?.addEventListener("click", () => {
+  nav?.classList.toggle("open");
+  menuToggle.classList.toggle("active");
+});
+
+document.querySelectorAll("a[href^='#']").forEach((link) => {
+  link.addEventListener("click", () => nav?.classList.remove("open"));
+});
+
+function typeHeadline(index = 0) {
+  if (!typingTarget) return;
+  typingTarget.textContent = headline.slice(0, index);
+  if (index < headline.length) {
+    window.setTimeout(() => typeHeadline(index + 1), 46);
+  }
+}
+
+function renderFeatures() {
+  if (!featureGrid) return;
+  featureGrid.innerHTML = features
+    .filter((feature) => feature.title && feature.body)
+    .map((feature) => `
+      <article class="feature-card reveal" data-title="${feature.title}">
+        <div class="feature-icon">${feature.icon}</div>
+        <h3>${feature.title}</h3>
+        <p>${feature.body}</p>
+      </article>
+    `)
+    .join("");
+
+  featureGrid.querySelectorAll(".feature-card").forEach((card) => {
+    card.addEventListener("click", () => {
+      featureGrid.querySelectorAll(".feature-card").forEach((item) => item.classList.remove("selected"));
+      card.classList.add("selected");
+    });
+  });
+}
+
+function setupRevealAnimations() {
+  const observer = new IntersectionObserver(
+    (entries) => {
+      entries.forEach((entry) => {
+        if (entry.isIntersecting) {
+          entry.target.classList.add("visible");
+          observer.unobserve(entry.target);
+        }
+      });
+    },
+    { threshold: 0.18 },
+  );
+
+  document.querySelectorAll(".reveal").forEach((item) => observer.observe(item));
+}
+
+contactForm?.addEventListener("submit", (event) => {
+  event.preventDefault();
+  const data = new FormData(contactForm);
+  const name = String(data.get("name") || "").trim();
+  const email = String(data.get("email") || "").trim();
+  const message = String(data.get("message") || "").trim();
+
+  if (!name || !email.includes("@") || message.length < 8) {
+    formStatus.textContent = "Add a valid name, email, and project message.";
+    formStatus.style.color = "#ff8ba7";
+    return;
+  }
+
+  contactForm.reset();
+  formStatus.style.color = "#6dffb3";
+  formStatus.textContent = `Thanks ${name}. Your request is ready to send.`;
+});
+
+renderFeatures();
+typeHeadline();
+requestAnimationFrame(setupRevealAnimations);
+""".replace("__FEATURES_JSON__", features_json).replace("__HEADLINE_JSON__", json.dumps(brief["headline"]))
+
+    return [
+        {"path": "index.html", "content": html},
+        {"path": "style.css", "content": css},
+        {"path": "script.js", "content": js},
+    ]
+
+
+def _retry_code_request(user_request: str, reason: str, files: list[dict]) -> str:
+    file_summary = ", ".join(str(item.get("path") or "unknown") for item in files[:6] if isinstance(item, dict))
+    return (
+        f"{user_request}\n\n"
+        "The previous code output was rejected by validation and must be rebuilt from scratch.\n"
+        f"Validation reason: {reason}\n"
+        f"Previous files: {file_summary or 'none'}\n\n"
+        "Return a complete replacement project as valid JSON only. For websites, build a finished dynamic page with "
+        "data-rendered sections, filtering/search or tabs, form validation, responsive CSS, "
+        "real content, and real visual treatment. Do not use Project 1/Project 2/sample content, picsum.photos, "
+        "placeholder images, empty links, tiny starter code, or generic reusable templates. Match the user's exact niche and visual request.\n\n"
+        f"Visual contract:\n{_prompt_style_contract(user_request)}"
+    )
 
 
 def _new_project_dir(project_name: str) -> Path:
@@ -448,8 +1988,9 @@ def _write_files(project_dir: Path, files: list[dict]) -> list[Path]:
         if not isinstance(item, dict):
             continue
 
-        relative_path = _safe_relative_path(str(item.get("path") or "main.txt"))
-        content = str(item.get("content") or "")[:MAX_FILE_CHARS]
+        normalized = _normalize_file_item(item)
+        relative_path = _safe_relative_path(normalized["path"])
+        content = normalized["content"][:MAX_FILE_CHARS]
         if not content.strip():
             continue
 
@@ -460,33 +2001,177 @@ def _write_files(project_dir: Path, files: list[dict]) -> list[Path]:
     return written
 
 
-def _quality_fallback_for_request(user_request: str, files: list[dict]) -> tuple[str, str, list[dict]] | None:
+def _has_usable_file_content(files: list[dict]) -> bool:
+    for item in files:
+        if not isinstance(item, dict):
+            continue
+        content = _normalize_file_item(item)["content"].strip()
+        if len(content) >= 40:
+            return True
+    return False
+
+
+def _repair_website_files_with_ai(user_request: str, reason: str) -> list[dict[str, str]]:
+    if not _is_website_request(user_request.lower()) and "html" not in user_request.lower():
+        return []
+
+    try:
+        return [
+            {"path": "index.html", "content": _generate_single_project_file(user_request, reason, "index.html", _html_file_instruction(user_request))},
+            {"path": "style.css", "content": _generate_single_project_file(user_request, reason, "style.css", _css_file_instruction(user_request))},
+            {"path": "script.js", "content": _generate_single_project_file(user_request, reason, "script.js", _js_file_instruction(user_request))},
+        ]
+    except Exception:
+        return []
+
+
+def _validated_repair_website_files(user_request: str, reason: str) -> list[dict[str, str]]:
+    repaired = _repair_website_files_with_ai(user_request, reason)
+    if not repaired:
+        return []
+    try:
+        _validate_generated_project(user_request, repaired)
+        return repaired
+    except RuntimeError as error:
+        stronger_reason = (
+            f"{reason}\n\nThe first repair still failed visual validation: {error}\n"
+            "Regenerate with a noticeably custom visual system that matches the user's exact prompt."
+        )
+        repaired = _repair_website_files_with_ai(user_request, stronger_reason)
+        if not repaired:
+            return []
+        try:
+            _validate_generated_project(user_request, repaired)
+            return repaired
+        except RuntimeError:
+            return []
+
+
+def _generate_single_project_file(user_request: str, reason: str, path: str, instruction: str) -> str:
+    from api.ai_provider import chat_ai_messages
+
+    raw = chat_ai_messages(
+        task_type="coding",
+        temperature=0.28,
+        max_tokens=5200,
+        messages=[
+            {
+                "role": "system",
+                "content": (
+                    "You are JX Jarvis generating exactly one project file for a local website build. "
+                    "Return only the complete file content. Do not use markdown fences. Do not explain. "
+                    "Do not return an empty file. Do not use generic reusable templates. Follow the user's exact niche, style, and feature request. "
+                    "Reject plain browser-default output: no default blue link nav, no bullet menus, no unstyled white cards, "
+                    "no broken image URLs, and no overlapping text."
+                ),
+            },
+            {
+                "role": "user",
+                "content": (
+                    f"Original user request:\n{user_request}\n\n"
+                    f"Repair reason:\n{reason}\n\n"
+                    f"Generate this file only: {path}\n\n"
+                    f"File requirements:\n{instruction}"
+                ),
+            },
+        ],
+    )
+    content = _strip_code_fence(raw).strip()
+    if len(content) < 40:
+        raise RuntimeError(f"{path} came back empty.")
+    return content
+
+
+def _strip_code_fence(text: str) -> str:
+    match = re.search(r"```[^\n`]*\n(.*?)```", text, re.DOTALL)
+    if match:
+        return match.group(1)
+    return text
+
+
+def _html_file_instruction(user_request: str) -> str:
+    return (
+        "Create complete semantic HTML for the requested website. Link to style.css and script.js. "
+        "Include real sections matching the prompt, not generic placeholders. Include nav, hero, feature/product/service sections as relevant, "
+        "contact/booking/cart area as relevant, and accessible text. Do not inline CSS or JS except tiny unavoidable attributes. "
+        + _prompt_style_contract(user_request)
+    )
+
+
+def _css_file_instruction(user_request: str) -> str:
+    return (
+        "Create polished responsive CSS matching the prompt's visual style. Include desktop and mobile layouts, meaningful typography, "
+        "hover states, animations, and niche-appropriate colors. Do not reuse a generic cyan-purple startup layout unless the user asked for that exact style. "
+        "Style every nav/list/form/card so the page never looks like raw HTML. "
+        + _prompt_style_contract(user_request)
+    )
+
+
+def _js_file_instruction(user_request: str) -> str:
+    return (
+        "Create JavaScript for real interactions matching the prompt: render dynamic cards/data when useful, menu toggle, filters/tabs/cart/gallery/booking validation as relevant, "
+        "smooth scrolling helpers, and visible UI state updates. Do not use localStorage unless the user explicitly asks to save data. "
+        + _prompt_style_contract(user_request)
+    )
+
+
+def _normalize_file_item(item: dict) -> dict[str, str]:
+    path = str(
+        item.get("path")
+        or item.get("filename")
+        or item.get("file")
+        or item.get("name")
+        or item.get("filepath")
+        or item.get("file_path")
+        or "main.txt"
+    )
+    content = str(
+        item.get("content")
+        or item.get("code")
+        or item.get("source")
+        or item.get("text")
+        or item.get("body")
+        or ""
+    )
+    return {"path": path, "content": content}
+
+
+def _validate_generated_project(user_request: str, files: list[dict]) -> None:
     normalized = user_request.lower()
+    issues: list[str] = []
 
-    if _is_snake_game_request(normalized) and _is_weak_generated_project(files, minimum_chars=5200):
-        return (
-            "premium-snake-game",
-            "Playable polished Snake web game with score, controls, restart flow, and responsive canvas.",
-            _snake_game_files(),
-        )
+    if _is_website_request(normalized):
+        if _is_weak_generated_project(files, minimum_chars=7600):
+            issues.append("the project has too little complete website code")
+        if not _has_website_visual_assets(files):
+            issues.append("it is missing real visual treatment such as images, rich backgrounds, or generated visual panels")
+        if not _has_professional_website_css(files):
+            issues.append("the CSS is too plain and still looks like default browser HTML")
+        issues.extend(_prompt_theme_issues(normalized, files))
+        if _expects_dynamic_site(normalized) and not _has_dynamic_website_behavior(files):
+            issues.append("the prompt asked for interactive/dynamic behavior, but the JavaScript is too weak")
+    elif _is_snake_game_request(normalized) and _is_weak_generated_project(files, minimum_chars=5200):
+        issues.append("the game project is too incomplete")
+    elif _is_app_or_tool_request(normalized) and _is_weak_generated_project(files, minimum_chars=4200):
+        issues.append("the app/tool project is too incomplete")
 
-    if _is_website_request(normalized) and (
-        _is_weak_generated_project(files, minimum_chars=5200) or not _has_website_visual_assets(files)
-    ):
-        return (
-            "premium-website",
-            "Premium responsive website with real images, finished sections, interactive filtering, pricing, testimonials, and contact form.",
-            _premium_website_files(user_request),
-        )
+    if issues:
+        raise RuntimeError("The generated project failed validation: " + "; ".join(issues[:6]) + ".")
 
-    if _is_app_or_tool_request(normalized) and _is_weak_generated_project(files, minimum_chars=4200):
-        return (
-            "premium-web-app",
-            "Polished browser app with real data, interactive controls, validation, empty states, and responsive design.",
-            _premium_web_app_files(user_request),
-        )
 
-    return None
+def _is_generation_error(spec: dict, files: list[dict]) -> bool:
+    project_name = str(spec.get("project_name") or "").lower()
+    summary = str(spec.get("summary") or "").lower()
+    if not files and ("failed" in project_name or "missing-provider" in project_name):
+        return True
+    failure_markers = (
+        "request failed",
+        "no configured ai provider",
+        "add a key",
+        "missing provider",
+        "missing-provider",
+    )
+    return not files and any(marker in summary or marker in project_name for marker in failure_markers)
 
 
 def _is_website_request(normalized: str) -> bool:
@@ -497,8 +2182,52 @@ def _is_snake_game_request(normalized: str) -> bool:
     return "snake" in normalized and any(word in normalized for word in ("game", "website", "web", "app", "code"))
 
 
+def _prompt_style_contract(user_request: str) -> str:
+    normalized = user_request.lower()
+    rules = [
+        "The final page must look custom-built for this exact prompt, not like a saved template.",
+        "Avoid raw HTML defaults: no blue link menu, bullet navigation, tiny unstyled inputs, broken images, or overlapping content.",
+    ]
+
+    if _has_any(normalized, ("dark", "black", "night", "cinematic", "luxury")):
+        rules.append("Use a visibly dark visual system with light text, layered backgrounds, and strong contrast.")
+    if _has_any(normalized, ("luxury", "premium", "elegant")):
+        rules.append("Add premium typography, careful spacing, and refined accent colors instead of a basic startup look.")
+    if _has_any(normalized, ("glass", "glassmorphism", "blur")):
+        rules.append("Use translucent panels with rgba backgrounds, border highlights, and backdrop-filter blur.")
+    if _has_any(normalized, ("neon", "glow", "glowing")):
+        rules.append("Use glow effects through box-shadow/text-shadow/filter while keeping readability clean.")
+    if _has_any(normalized, ("animated", "animation", "smooth", "parallax", "cinematic")):
+        rules.append("Include CSS animations/transitions and JavaScript scroll or reveal behavior where useful.")
+    if _has_any(normalized, ("food", "restaurant", "delivery", "menu", "dish")):
+        rules.append("Use food/restaurant-specific sections, menu cards, order/booking flows, and appetizing visual language.")
+    if _has_any(normalized, ("ecommerce", "e-commerce", "shop", "shopping", "product", "cart")):
+        rules.append("Use product cards, prices, cart state, checkout/order controls, and store-focused layout.")
+    if _has_any(normalized, ("travel", "destination", "booking", "gallery", "agency")):
+        rules.append("Use destination cards, cinematic travel imagery/panels, gallery, itinerary/booking sections.")
+    if _has_any(normalized, ("gym", "fitness", "workout", "trainer")):
+        rules.append("Use workout plans, trainer cards, energetic fitness typography, and strong action-focused sections.")
+
+    return " ".join(f"{index}. {rule}" for index, rule in enumerate(rules, start=1))
+
+
+def _combined_files_text(files: list[dict]) -> str:
+    return "\n".join(_normalize_file_item(item)["content"] for item in files if isinstance(item, dict))
+
+
+def _file_content_by_suffix(files: list[dict], suffixes: tuple[str, ...]) -> str:
+    chunks: list[str] = []
+    for item in files:
+        if not isinstance(item, dict):
+            continue
+        normalized = _normalize_file_item(item)
+        if normalized["path"].lower().endswith(suffixes):
+            chunks.append(normalized["content"])
+    return "\n".join(chunks)
+
+
 def _has_website_visual_assets(files: list[dict]) -> bool:
-    combined = "\n".join(str(item.get("content") or "") for item in files if isinstance(item, dict)).lower()
+    combined = _combined_files_text(files).lower()
     if not combined.strip():
         return False
 
@@ -509,7 +2238,11 @@ def _has_website_visual_assets(files: list[dict]) -> bool:
         "image-set(",
         "images.unsplash.com",
         "images.pexels.com",
-        "picsum.photos",
+        "linear-gradient",
+        "radial-gradient",
+        "conic-gradient",
+        "canvas",
+        "svg",
         ".jpg",
         ".jpeg",
         ".png",
@@ -519,6 +2252,9 @@ def _has_website_visual_assets(files: list[dict]) -> bool:
     blocked_placeholders = (
         "image here",
         "placeholder image",
+        "picsum.photos",
+        "placehold.co",
+        "placeholder.com",
         "your image",
         "gray box",
         "grey box",
@@ -526,6 +2262,108 @@ def _has_website_visual_assets(files: list[dict]) -> bool:
     return any(marker in combined for marker in visual_markers) and not any(
         placeholder in combined for placeholder in blocked_placeholders
     )
+
+
+def _expects_dynamic_site(normalized: str) -> bool:
+    return any(word in normalized for word in ("dynamic", "interactive", "filter", "search", "dashboard", "app-like", "cart", "booking", "gallery", "menu toggle"))
+
+
+def _has_dynamic_website_behavior(files: list[dict]) -> bool:
+    combined = _combined_files_text(files).lower()
+    dynamic_markers = (
+        "addeventlistener",
+        "localstorage",
+        "sessionstorage",
+        "queryselector",
+        "createelement",
+        ".map(",
+        ".filter(",
+        "dataset",
+        "formdata",
+        "intersectionobserver",
+        "classlist",
+    )
+    return sum(marker in combined for marker in dynamic_markers) >= 4
+
+
+def _has_professional_website_css(files: list[dict]) -> bool:
+    css = _file_content_by_suffix(files, (".css",)).lower()
+    html = _file_content_by_suffix(files, (".html", ".htm")).lower()
+    combined = (css + "\n" + html).lower()
+    if len(css) < 2400:
+        return False
+
+    layout_markers = ("display: flex", "display:flex", "display: grid", "display:grid", "grid-template", "minmax(")
+    responsive_markers = ("@media", "clamp(", "min(", "max(")
+    polish_markers = ("transition", ":hover", "@keyframes", "animation", "transform", "box-shadow", "backdrop-filter")
+    reset_markers = ("box-sizing", "margin: 0", "margin:0", "list-style", "text-decoration")
+
+    if not any(marker in css for marker in layout_markers):
+        return False
+    if not any(marker in css for marker in responsive_markers):
+        return False
+    if sum(marker in css for marker in polish_markers) < 2:
+        return False
+    if sum(marker in css for marker in reset_markers) < 2:
+        return False
+    if "<ul" in html and "list-style" not in css and "nav" not in css:
+        return False
+    if "<form" in html and not any(marker in css for marker in ("input", "textarea", "select", "form-control")):
+        return False
+    if "body {" in css and "background: #fff" in css and not any(marker in combined for marker in ("dark", "luxury", "gradient", "image", "hero")):
+        return False
+    return True
+
+
+def _prompt_theme_issues(normalized: str, files: list[dict]) -> list[str]:
+    combined = _combined_files_text(files).lower()
+    css = _file_content_by_suffix(files, (".css",)).lower()
+    issues: list[str] = []
+
+    if _has_any(normalized, ("dark", "black", "night", "cinematic")) and not _has_any(
+        css,
+        ("#0", "#111", "#121", "#151", "#171", "rgb(0", "rgb(1", "rgb(2", "color-scheme: dark", "linear-gradient", "radial-gradient"),
+    ):
+        issues.append("the prompt asked for a dark/cinematic theme, but the CSS does not create one")
+    if _has_any(normalized, ("luxury", "premium", "elegant")) and not _has_any(
+        combined,
+        ("gold", "#d4", "#c9", "#f5d", "serif", "playfair", "cinzel", "letter-spacing", "premium", "luxury"),
+    ):
+        issues.append("the prompt asked for a premium/luxury feel, but the styling lacks premium visual cues")
+    if _has_any(normalized, ("glass", "glassmorphism", "blur")) and not _has_any(css, ("backdrop-filter", "rgba(", "blur(")):
+        issues.append("the prompt asked for glassmorphism, but the CSS lacks translucent blur panels")
+    if _has_any(normalized, ("neon", "glow", "glowing")) and not _has_any(css, ("box-shadow", "text-shadow", "drop-shadow", "glow")):
+        issues.append("the prompt asked for glowing/neon UI, but no glow styling is present")
+    if _has_any(normalized, ("animated", "animation", "smooth", "parallax", "cinematic")) and not _has_any(
+        combined,
+        ("@keyframes", "animation", "transition", "intersectionobserver", "parallax", "requestanimationframe", "transform"),
+    ):
+        issues.append("the prompt asked for animations/smooth effects, but the files lack animation behavior")
+    if _has_any(normalized, ("food", "restaurant", "delivery", "dish", "menu")) and not _has_any(
+        combined,
+        ("menu", "dish", "chef", "order", "delivery", "restaurant", "flavor", "meal"),
+    ):
+        issues.append("the content does not match the requested food/restaurant website")
+    if _has_any(normalized, ("ecommerce", "e-commerce", "shop", "shopping", "product", "cart")) and not (
+        "product" in combined and "cart" in combined
+    ):
+        issues.append("the prompt asked for ecommerce, but product/cart UI is missing")
+    if _has_any(normalized, ("travel", "destination", "booking", "gallery", "agency")) and not _has_any(
+        combined,
+        ("destination", "travel", "gallery", "booking", "itinerary", "journey", "escape"),
+    ):
+        issues.append("the content does not match the requested travel website")
+    if _has_any(normalized, ("gym", "fitness", "workout", "trainer")) and not _has_any(
+        combined,
+        ("workout", "trainer", "fitness", "gym", "program", "strength"),
+    ):
+        issues.append("the content does not match the requested gym/fitness website")
+
+    return issues
+
+
+def _has_any(text: str, terms: tuple[str, ...]) -> bool:
+    return any(term in text for term in terms)
 
 
 def _is_app_or_tool_request(normalized: str) -> bool:
@@ -551,14 +2389,19 @@ def _is_weak_generated_project(files: list[dict], minimum_chars: int) -> bool:
     if not files:
         return True
 
-    paths = [str(item.get("path") or "").lower() for item in files if isinstance(item, dict)]
-    contents = [str(item.get("content") or "") for item in files if isinstance(item, dict)]
+    normalized_items = [_normalize_file_item(item) for item in files if isinstance(item, dict)]
+    paths = [item["path"].lower() for item in normalized_items]
+    contents = [item["content"] for item in normalized_items]
     combined = "\n".join(contents).lower()
 
     placeholder_terms = (
         "project 1",
         "project 2",
+        "project 3",
+        "sample project",
+        "another sample project",
         "this is a description",
+        "welcome to my portfolio",
         "welcome to my portfolio website",
         "lorem ipsum",
         "todo:",
@@ -580,1362 +2423,6 @@ def _is_weak_generated_project(files: list[dict], minimum_chars: int) -> bool:
         return True
 
     return False
-
-
-def _premium_website_files(user_request: str) -> list[dict]:
-    title = "Nova Studio"
-    return [
-        {
-            "path": "index.html",
-            "content": f"""<!doctype html>
-<html lang="en">
-  <head>
-    <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>{title} - Premium Website</title>
-    <link rel="stylesheet" href="styles.css" />
-  </head>
-  <body>
-    <header class="topbar">
-      <a class="brand" href="#home"><span>N</span>{title}</a>
-      <nav aria-label="Main navigation">
-        <a href="#work">Work</a>
-        <a href="#services">Services</a>
-        <a href="#pricing">Pricing</a>
-        <a href="#contact">Contact</a>
-      </nav>
-      <button class="icon-button" id="themeButton" type="button" aria-label="Toggle theme">Theme</button>
-    </header>
-
-    <main id="home">
-      <section class="hero">
-        <div class="hero-copy">
-          <p class="eyebrow">Strategy - Design - Code</p>
-          <h1>High-converting digital experiences built with premium detail.</h1>
-          <p>
-            {title} turns ambitious ideas into fast, responsive websites with strong messaging,
-            polished visuals, and interactions that feel ready for real users.
-          </p>
-          <div class="actions">
-            <a class="button primary" href="#contact">Start a Project</a>
-            <a class="button secondary" href="#work">See Work</a>
-          </div>
-        </div>
-        <aside class="hero-panel" aria-label="Project snapshot">
-          <img src="https://images.unsplash.com/photo-1497366754035-f200968a6e72?auto=format&fit=crop&w=1100&q=80" alt="Premium creative workspace with modern website planning" />
-          <div class="hero-panel-content">
-            <span class="status">Live build queue open</span>
-            <strong>Request understood</strong>
-            <p>{user_request[:160]}</p>
-            <div class="score-grid">
-              <div><b>98</b><span>Performance</span></div>
-              <div><b>24h</b><span>Prototype</span></div>
-              <div><b>4.9</b><span>Client rating</span></div>
-            </div>
-          </div>
-        </aside>
-      </section>
-
-      <section id="work" class="section">
-        <div class="section-title">
-          <p class="eyebrow">Featured Work</p>
-          <h2>Real sections, real content, and a finished feel.</h2>
-        </div>
-        <div class="filters" aria-label="Project filters">
-          <button class="filter active" data-filter="all" type="button">All</button>
-          <button class="filter" data-filter="brand" type="button">Brand</button>
-          <button class="filter" data-filter="saas" type="button">SaaS</button>
-          <button class="filter" data-filter="commerce" type="button">Commerce</button>
-        </div>
-        <div class="project-grid">
-          <article class="project-card" data-kind="brand">
-            <img src="https://images.unsplash.com/photo-1500530855697-b586d89ba3ee?auto=format&fit=crop&w=900&q=80" alt="Premium brand website displayed in a warm studio setting" />
-            <span>Brand System</span>
-            <h3>Pulse Identity</h3>
-            <p>Launch-ready visual identity with a responsive site, motion accents, and conversion copy.</p>
-          </article>
-          <article class="project-card" data-kind="saas">
-            <img src="https://images.unsplash.com/photo-1551434678-e076c223a692?auto=format&fit=crop&w=900&q=80" alt="Team reviewing a polished SaaS dashboard interface" />
-            <span>SaaS Dashboard</span>
-            <h3>MetricFlow</h3>
-            <p>Operational dashboard with clean cards, compact data views, and a smooth onboarding path.</p>
-          </article>
-          <article class="project-card" data-kind="commerce">
-            <img src="https://images.unsplash.com/photo-1515886657613-9f3515b0c78f?auto=format&fit=crop&w=900&q=80" alt="Stylish commerce photography for a premium product website" />
-            <span>Commerce</span>
-            <h3>Craft Market</h3>
-            <p>Premium storefront concept with product highlights, trust signals, and mobile-first checkout cues.</p>
-          </article>
-        </div>
-      </section>
-
-      <section id="services" class="section services">
-        <div>
-          <p class="eyebrow">Services</p>
-          <h2>Everything needed to ship a sharp web presence.</h2>
-        </div>
-        <div class="service-list">
-          <div><strong>01</strong><h3>Website Design</h3><p>Responsive layouts, brand direction, sections, and content architecture.</p></div>
-          <div><strong>02</strong><h3>Frontend Build</h3><p>Clean HTML/CSS/JS with interactions, accessibility basics, and fast loading.</p></div>
-          <div><strong>03</strong><h3>Automation</h3><p>Forms, local tools, workflow helpers, and simple integrations where useful.</p></div>
-        </div>
-      </section>
-
-      <section id="pricing" class="section">
-        <div class="section-title">
-          <p class="eyebrow">Pricing</p>
-          <h2>Clear packages for different launch speeds.</h2>
-        </div>
-        <div class="pricing-grid">
-          <article><span>Starter</span><h3>$499</h3><p>One polished page, responsive build, contact CTA, and launch checklist.</p></article>
-          <article class="featured"><span>Growth</span><h3>$1,299</h3><p>Multi-section website, animations, case studies, forms, and performance pass.</p></article>
-          <article><span>Custom</span><h3>Quote</h3><p>Advanced flows, dashboards, content systems, integrations, or app prototypes.</p></article>
-        </div>
-      </section>
-
-      <section class="section testimonials">
-        <blockquote>
-          "The final site felt like a real product on day one: fast, premium, and easy for customers to understand."
-        </blockquote>
-        <span>- A happy launch client</span>
-      </section>
-
-      <section id="contact" class="section contact">
-        <div>
-          <p class="eyebrow">Contact</p>
-          <h2>Tell us what you want to build.</h2>
-        </div>
-        <form id="leadForm">
-          <input name="name" placeholder="Your name" required />
-          <input name="email" type="email" placeholder="Email address" required />
-          <select name="budget" required>
-            <option value="">Project budget</option>
-            <option>$500 - $1,000</option>
-            <option>$1,000 - $3,000</option>
-            <option>$3,000+</option>
-          </select>
-          <textarea name="message" placeholder="What should this website do?" required></textarea>
-          <button class="button primary" type="submit">Send Request</button>
-          <p id="formStatus" role="status"></p>
-        </form>
-      </section>
-    </main>
-
-    <footer>Built by JX JARVIS. Replace the brand, prices, and links with your final business details.</footer>
-    <script src="script.js"></script>
-  </body>
-</html>
-""",
-        },
-        {
-            "path": "styles.css",
-            "content": """:root {
-  --bg: #090d14;
-  --panel: rgba(255, 255, 255, 0.08);
-  --panel-strong: rgba(255, 255, 255, 0.14);
-  --text: #f7fbff;
-  --muted: #a7b2c5;
-  --line: rgba(255, 255, 255, 0.14);
-  --accent: #00d4ff;
-  --accent-2: #f8c84e;
-  --shadow: 0 24px 70px rgba(0, 0, 0, 0.34);
-}
-
-body.light {
-  --bg: #f5f7fb;
-  --panel: rgba(255, 255, 255, 0.82);
-  --panel-strong: #ffffff;
-  --text: #101827;
-  --muted: #5c6678;
-  --line: rgba(16, 24, 39, 0.12);
-  --shadow: 0 18px 55px rgba(16, 24, 39, 0.12);
-}
-
-* { box-sizing: border-box; }
-html { scroll-behavior: smooth; }
-body {
-  margin: 0;
-  background:
-    radial-gradient(circle at 15% 0%, rgba(0, 212, 255, 0.25), transparent 30rem),
-    radial-gradient(circle at 85% 10%, rgba(248, 200, 78, 0.16), transparent 24rem),
-    var(--bg);
-  color: var(--text);
-  font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
-}
-
-a { color: inherit; text-decoration: none; }
-.topbar {
-  position: sticky;
-  top: 0;
-  z-index: 20;
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 1rem;
-  padding: 1rem clamp(1rem, 5vw, 4rem);
-  border-bottom: 1px solid var(--line);
-  background: color-mix(in srgb, var(--bg) 86%, transparent);
-  backdrop-filter: blur(18px);
-}
-.brand { display: flex; align-items: center; gap: .6rem; font-weight: 900; }
-.brand span {
-  width: 34px;
-  height: 34px;
-  display: grid;
-  place-items: center;
-  border-radius: 10px;
-  background: linear-gradient(135deg, var(--accent), var(--accent-2));
-  color: #07111f;
-}
-nav { display: flex; gap: clamp(.75rem, 2vw, 1.5rem); color: var(--muted); font-weight: 800; }
-nav a:hover { color: var(--text); }
-.icon-button, .filter {
-  border: 1px solid var(--line);
-  background: var(--panel);
-  color: var(--text);
-  border-radius: 999px;
-  min-height: 40px;
-  padding: 0 .9rem;
-  cursor: pointer;
-  font-weight: 800;
-}
-
-.hero, .section {
-  width: min(1180px, calc(100% - 2rem));
-  margin: 0 auto;
-}
-.hero {
-  min-height: calc(100vh - 72px);
-  display: grid;
-  grid-template-columns: minmax(0, 1.12fr) minmax(300px, .88fr);
-  align-items: center;
-  gap: 2rem;
-  padding: 4rem 0;
-}
-.hero h1, .section h2 {
-  margin: 0 0 1rem;
-  line-height: .96;
-  letter-spacing: -0.06em;
-}
-.hero h1 { font-size: clamp(3.2rem, 7.8vw, 6.8rem); }
-.section h2 { font-size: clamp(2.1rem, 4.3vw, 4.3rem); }
-p { color: var(--muted); line-height: 1.75; }
-.eyebrow {
-  color: var(--accent);
-  font-size: .78rem;
-  font-weight: 900;
-  letter-spacing: .16em;
-  text-transform: uppercase;
-}
-.actions, .filters { display: flex; flex-wrap: wrap; gap: .75rem; margin-top: 1.5rem; }
-.button {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  min-height: 50px;
-  padding: 0 1.1rem;
-  border-radius: 999px;
-  font-weight: 900;
-}
-.primary { background: linear-gradient(135deg, var(--accent), var(--accent-2)); color: #07111f; }
-.secondary { border: 1px solid var(--line); background: var(--panel); }
-
-.hero-panel, .project-card, .service-list div, .pricing-grid article, .testimonials, .contact, form {
-  border: 1px solid var(--line);
-  background: var(--panel);
-  box-shadow: var(--shadow);
-  backdrop-filter: blur(18px);
-  overflow: hidden;
-}
-.hero-panel { border-radius: 30px; padding: 0; }
-.hero-panel img {
-  width: 100%;
-  aspect-ratio: 4 / 3;
-  object-fit: cover;
-  display: block;
-}
-.hero-panel-content { padding: 1.4rem; }
-.status { color: #74f5bd; font-weight: 900; }
-.score-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: .7rem; margin-top: 1rem; }
-.score-grid div { border-radius: 18px; padding: .9rem; background: var(--panel-strong); }
-.score-grid b { display: block; font-size: 1.5rem; }
-.score-grid span { color: var(--muted); font-size: .78rem; font-weight: 800; }
-
-.section { padding: clamp(4rem, 8vw, 7rem) 0; }
-.section-title { max-width: 760px; margin-bottom: 2rem; }
-.project-grid, .pricing-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 1rem; }
-.project-card, .pricing-grid article { border-radius: 26px; padding: 1.35rem; min-height: 245px; }
-.project-card {
-  display: flex;
-  flex-direction: column;
-  gap: .8rem;
-}
-.project-card img {
-  width: calc(100% + 2.7rem);
-  margin: -1.35rem -1.35rem .3rem;
-  aspect-ratio: 16 / 10;
-  object-fit: cover;
-  display: block;
-}
-.project-card span, .pricing-grid span { color: var(--accent-2); font-size: .8rem; font-weight: 900; text-transform: uppercase; letter-spacing: .12em; }
-.project-card.hide { display: none; }
-.filter.active { background: var(--accent); color: #07111f; border-color: transparent; }
-.services { display: grid; grid-template-columns: .85fr 1.15fr; gap: 2rem; }
-.service-list { display: grid; gap: .85rem; }
-.service-list div { border-radius: 24px; padding: 1.15rem; }
-.service-list strong { color: var(--accent); }
-.featured { transform: translateY(-10px); border-color: color-mix(in srgb, var(--accent) 60%, var(--line)) !important; }
-.testimonials { border-radius: 30px; padding: clamp(2rem, 5vw, 4rem); text-align: center; }
-blockquote { margin: 0 auto 1rem; max-width: 820px; font-size: clamp(1.5rem, 3vw, 2.8rem); line-height: 1.16; letter-spacing: -0.04em; }
-.contact { border-radius: 30px; padding: clamp(1.25rem, 4vw, 2rem); display: grid; grid-template-columns: .8fr 1.2fr; gap: 1rem; }
-form { border-radius: 24px; padding: 1rem; display: grid; gap: .75rem; box-shadow: none; }
-input, select, textarea {
-  width: 100%;
-  border: 1px solid var(--line);
-  border-radius: 16px;
-  background: var(--panel-strong);
-  color: var(--text);
-  min-height: 48px;
-  padding: .9rem;
-  font: inherit;
-}
-textarea { min-height: 120px; resize: vertical; }
-footer { padding: 2rem; text-align: center; color: var(--muted); border-top: 1px solid var(--line); }
-
-@media (max-width: 840px) {
-  nav { display: none; }
-  .hero, .services, .contact, .project-grid, .pricing-grid { grid-template-columns: 1fr; }
-  .hero { min-height: auto; }
-  .score-grid { grid-template-columns: 1fr; }
-  .featured { transform: none; }
-}
-""",
-        },
-        {
-            "path": "script.js",
-            "content": """const themeButton = document.getElementById("themeButton");
-const savedTheme = localStorage.getItem("nova-theme");
-
-if (savedTheme === "light") {
-  document.body.classList.add("light");
-}
-
-themeButton.addEventListener("click", () => {
-  document.body.classList.toggle("light");
-  localStorage.setItem("nova-theme", document.body.classList.contains("light") ? "light" : "dark");
-});
-
-document.querySelectorAll(".filter").forEach((button) => {
-  button.addEventListener("click", () => {
-    document.querySelectorAll(".filter").forEach((item) => item.classList.remove("active"));
-    button.classList.add("active");
-
-    const filter = button.dataset.filter;
-    document.querySelectorAll(".project-card").forEach((card) => {
-      card.classList.toggle("hide", filter !== "all" && card.dataset.kind !== filter);
-    });
-  });
-});
-
-document.getElementById("leadForm").addEventListener("submit", (event) => {
-  event.preventDefault();
-  const data = new FormData(event.currentTarget);
-  const name = data.get("name");
-  document.getElementById("formStatus").textContent = `Thanks, ${name}. Your project brief is ready to send.`;
-  event.currentTarget.reset();
-});
-""",
-        },
-    ]
-
-
-def _premium_web_app_files(user_request: str) -> list[dict]:
-    return [
-        {
-            "path": "index.html",
-            "content": f"""<!doctype html>
-<html lang="en">
-  <head>
-    <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>JX Build Studio App</title>
-    <link rel="stylesheet" href="styles.css" />
-  </head>
-  <body>
-    <main class="app-shell">
-      <aside class="sidebar">
-        <a class="brand" href="#"><span>JX</span> Build Studio</a>
-        <nav aria-label="Workspace navigation">
-          <button class="nav-item active" data-view="overview" type="button">Overview</button>
-          <button class="nav-item" data-view="tasks" type="button">Tasks</button>
-          <button class="nav-item" data-view="insights" type="button">Insights</button>
-        </nav>
-      </aside>
-
-      <section class="workspace">
-        <header class="topline">
-          <div>
-            <p class="eyebrow">Generated by JX JARVIS</p>
-            <h1>Premium working app for your request.</h1>
-            <p class="request">Request: {user_request[:180]}</p>
-          </div>
-          <button id="themeButton" type="button">Theme</button>
-        </header>
-
-        <section class="metric-grid" aria-label="Project metrics">
-          <article><span>Progress</span><strong id="progressMetric">68%</strong><p>Active build confidence</p></article>
-          <article><span>Items</span><strong id="itemMetric">4</strong><p>Live workspace entries</p></article>
-          <article><span>Priority</span><strong>High</strong><p>Ready for customization</p></article>
-        </section>
-
-        <section class="panel input-panel">
-          <div>
-            <p class="eyebrow">Create</p>
-            <h2>Add a new workspace item</h2>
-          </div>
-          <form id="itemForm">
-            <input id="titleInput" name="title" placeholder="Item title" required />
-            <select id="typeInput" name="type" required>
-              <option value="Feature">Feature</option>
-              <option value="Design">Design</option>
-              <option value="Bug Fix">Bug Fix</option>
-              <option value="Research">Research</option>
-            </select>
-            <textarea id="noteInput" name="note" placeholder="Short note or requirement" required></textarea>
-            <button type="submit">Add Item</button>
-          </form>
-        </section>
-
-        <section class="panel">
-          <div class="panel-heading">
-            <div>
-              <p class="eyebrow">Workspace</p>
-              <h2>Active build board</h2>
-            </div>
-            <input id="searchInput" placeholder="Search items" />
-          </div>
-          <div id="emptyState" class="empty-state" hidden>No matching items yet.</div>
-          <div id="itemList" class="item-list"></div>
-        </section>
-      </section>
-    </main>
-    <script src="script.js"></script>
-  </body>
-</html>
-""",
-        },
-        {
-            "path": "styles.css",
-            "content": """:root {
-  --bg: #0b1018;
-  --sidebar: #080c12;
-  --panel: rgba(255, 255, 255, 0.08);
-  --panel-strong: rgba(255, 255, 255, 0.13);
-  --text: #f8fbff;
-  --muted: #a7b2c4;
-  --line: rgba(255, 255, 255, 0.14);
-  --accent: #34d399;
-  --accent-2: #60a5fa;
-  --shadow: 0 22px 70px rgba(0, 0, 0, 0.32);
-}
-
-body.light {
-  --bg: #f4f7fb;
-  --sidebar: #ffffff;
-  --panel: rgba(255, 255, 255, 0.86);
-  --panel-strong: #ffffff;
-  --text: #111827;
-  --muted: #5f6b7a;
-  --line: rgba(17, 24, 39, 0.12);
-  --shadow: 0 18px 50px rgba(17, 24, 39, 0.11);
-}
-
-* { box-sizing: border-box; }
-body {
-  margin: 0;
-  min-height: 100vh;
-  color: var(--text);
-  background:
-    radial-gradient(circle at 78% 8%, rgba(96, 165, 250, .22), transparent 28rem),
-    radial-gradient(circle at 34% 0%, rgba(52, 211, 153, .18), transparent 24rem),
-    var(--bg);
-  font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
-}
-
-.app-shell {
-  min-height: 100vh;
-  display: grid;
-  grid-template-columns: 260px minmax(0, 1fr);
-}
-.sidebar {
-  position: sticky;
-  top: 0;
-  height: 100vh;
-  padding: 1.2rem;
-  border-right: 1px solid var(--line);
-  background: color-mix(in srgb, var(--sidebar) 88%, transparent);
-}
-.brand {
-  display: flex;
-  align-items: center;
-  gap: .65rem;
-  color: var(--text);
-  text-decoration: none;
-  font-weight: 900;
-}
-.brand span {
-  width: 38px;
-  height: 38px;
-  display: grid;
-  place-items: center;
-  border-radius: 12px;
-  background: linear-gradient(135deg, var(--accent), var(--accent-2));
-  color: #061018;
-}
-nav { display: grid; gap: .55rem; margin-top: 2rem; }
-button, input, select, textarea {
-  font: inherit;
-}
-button {
-  border: 0;
-  border-radius: 14px;
-  min-height: 44px;
-  padding: 0 .9rem;
-  cursor: pointer;
-  background: linear-gradient(135deg, var(--accent), var(--accent-2));
-  color: #061018;
-  font-weight: 900;
-}
-.nav-item {
-  width: 100%;
-  text-align: left;
-  background: transparent;
-  color: var(--muted);
-}
-.nav-item.active, .nav-item:hover {
-  color: var(--text);
-  background: var(--panel);
-}
-.workspace {
-  padding: clamp(1rem, 4vw, 2rem);
-  display: grid;
-  gap: 1rem;
-}
-.topline {
-  display: flex;
-  align-items: start;
-  justify-content: space-between;
-  gap: 1rem;
-}
-.eyebrow {
-  margin: 0 0 .45rem;
-  color: var(--accent);
-  font-size: .76rem;
-  font-weight: 900;
-  letter-spacing: .14em;
-  text-transform: uppercase;
-}
-h1, h2, p { margin-top: 0; }
-h1 {
-  max-width: 760px;
-  margin-bottom: .7rem;
-  font-size: clamp(2.4rem, 5.4vw, 5.2rem);
-  line-height: .95;
-  letter-spacing: -0.06em;
-}
-h2 { margin-bottom: .75rem; font-size: clamp(1.5rem, 3vw, 2.5rem); letter-spacing: -0.04em; }
-p, .request { color: var(--muted); line-height: 1.7; }
-.metric-grid {
-  display: grid;
-  grid-template-columns: repeat(3, 1fr);
-  gap: 1rem;
-}
-.metric-grid article, .panel, .item-card {
-  border: 1px solid var(--line);
-  border-radius: 22px;
-  background: var(--panel);
-  box-shadow: var(--shadow);
-  backdrop-filter: blur(18px);
-}
-.metric-grid article { padding: 1rem; }
-.metric-grid span, .item-type { color: var(--muted); font-size: .78rem; font-weight: 900; text-transform: uppercase; letter-spacing: .11em; }
-.metric-grid strong { display: block; margin: .2rem 0; font-size: 2rem; }
-.panel { padding: clamp(1rem, 3vw, 1.35rem); }
-.input-panel { display: grid; grid-template-columns: .7fr 1.3fr; gap: 1rem; align-items: start; }
-form { display: grid; gap: .7rem; }
-input, select, textarea {
-  width: 100%;
-  border: 1px solid var(--line);
-  border-radius: 14px;
-  background: var(--panel-strong);
-  color: var(--text);
-  min-height: 46px;
-  padding: .8rem;
-}
-textarea { min-height: 95px; resize: vertical; }
-.panel-heading {
-  display: flex;
-  justify-content: space-between;
-  align-items: start;
-  gap: 1rem;
-  margin-bottom: 1rem;
-}
-#searchInput { max-width: 260px; }
-.item-list { display: grid; gap: .75rem; }
-.item-card {
-  padding: 1rem;
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) auto;
-  gap: 1rem;
-  box-shadow: none;
-}
-.item-card h3 { margin: .2rem 0 .35rem; }
-.item-actions { display: flex; gap: .5rem; align-items: center; }
-.item-actions button { min-height: 36px; border-radius: 12px; }
-.done { opacity: .58; }
-.done h3 { text-decoration: line-through; }
-.empty-state {
-  border: 1px dashed var(--line);
-  border-radius: 18px;
-  padding: 1rem;
-  color: var(--muted);
-  text-align: center;
-}
-
-@media (max-width: 860px) {
-  .app-shell { grid-template-columns: 1fr; }
-  .sidebar { position: static; height: auto; }
-  .metric-grid, .input-panel { grid-template-columns: 1fr; }
-  .topline, .panel-heading, .item-card { grid-template-columns: 1fr; display: grid; }
-  #searchInput { max-width: none; }
-}
-""",
-        },
-        {
-            "path": "script.js",
-            "content": """const initialItems = [
-  { id: crypto.randomUUID(), type: "Feature", title: "Build the main experience", note: "Turn the user request into a working screen with useful controls.", done: false },
-  { id: crypto.randomUUID(), type: "Design", title: "Polish the interface", note: "Responsive layout, premium spacing, hover states, and readable content.", done: false },
-  { id: crypto.randomUUID(), type: "Research", title: "Add realistic sample data", note: "Use content that makes the app feel real instead of empty.", done: true },
-  { id: crypto.randomUUID(), type: "Bug Fix", title: "Validate edge states", note: "Check empty, search, completed, and new item states.", done: false },
-];
-
-let items = JSON.parse(localStorage.getItem("jx-app-items") || "null") || initialItems;
-const list = document.getElementById("itemList");
-const emptyState = document.getElementById("emptyState");
-const searchInput = document.getElementById("searchInput");
-const itemMetric = document.getElementById("itemMetric");
-const progressMetric = document.getElementById("progressMetric");
-
-function save() {
-  localStorage.setItem("jx-app-items", JSON.stringify(items));
-}
-
-function render() {
-  const query = searchInput.value.trim().toLowerCase();
-  const visible = items.filter((item) => {
-    return [item.title, item.type, item.note].join(" ").toLowerCase().includes(query);
-  });
-
-  list.innerHTML = visible.map((item) => `
-    <article class="item-card ${item.done ? "done" : ""}">
-      <div>
-        <span class="item-type">${item.type}</span>
-        <h3>${item.title}</h3>
-        <p>${item.note}</p>
-      </div>
-      <div class="item-actions">
-        <button data-action="toggle" data-id="${item.id}" type="button">${item.done ? "Undo" : "Done"}</button>
-        <button data-action="delete" data-id="${item.id}" type="button">Delete</button>
-      </div>
-    </article>
-  `).join("");
-
-  emptyState.hidden = visible.length > 0;
-  itemMetric.textContent = String(items.length);
-  const done = items.filter((item) => item.done).length;
-  const progress = items.length ? Math.round((done / items.length) * 100) : 0;
-  progressMetric.textContent = `${progress}%`;
-}
-
-document.getElementById("itemForm").addEventListener("submit", (event) => {
-  event.preventDefault();
-  const form = new FormData(event.currentTarget);
-  items.unshift({
-    id: crypto.randomUUID(),
-    title: form.get("title"),
-    type: form.get("type"),
-    note: form.get("note"),
-    done: false,
-  });
-  event.currentTarget.reset();
-  save();
-  render();
-});
-
-list.addEventListener("click", (event) => {
-  const button = event.target.closest("button");
-  if (!button) return;
-  const id = button.dataset.id;
-  if (button.dataset.action === "toggle") {
-    items = items.map((item) => item.id === id ? { ...item, done: !item.done } : item);
-  }
-  if (button.dataset.action === "delete") {
-    items = items.filter((item) => item.id !== id);
-  }
-  save();
-  render();
-});
-
-searchInput.addEventListener("input", render);
-
-document.getElementById("themeButton").addEventListener("click", () => {
-  document.body.classList.toggle("light");
-  localStorage.setItem("jx-app-theme", document.body.classList.contains("light") ? "light" : "dark");
-});
-
-if (localStorage.getItem("jx-app-theme") === "light") {
-  document.body.classList.add("light");
-}
-
-document.querySelectorAll(".nav-item").forEach((button) => {
-  button.addEventListener("click", () => {
-    document.querySelectorAll(".nav-item").forEach((item) => item.classList.remove("active"));
-    button.classList.add("active");
-  });
-});
-
-render();
-""",
-        },
-    ]
-
-
-def _snake_game_files() -> list[dict]:
-    return [
-        {
-            "path": "index.html",
-            "content": """<!doctype html>
-<html lang="en">
-  <head>
-    <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Neon Snake Arena</title>
-    <link rel="stylesheet" href="styles.css" />
-  </head>
-  <body>
-    <main class="shell">
-      <section class="intro">
-        <p class="eyebrow">Arcade Web Game</p>
-        <h1>Neon Snake Arena</h1>
-        <p>Eat energy cores, grow longer, dodge your own trail, and push for a new high score.</p>
-        <div class="controls">
-          <button id="startButton" type="button">Start</button>
-          <button id="pauseButton" type="button">Pause</button>
-          <button id="restartButton" type="button">Restart</button>
-        </div>
-      </section>
-
-      <section class="game-card">
-        <div class="hud">
-          <div><span>Score</span><strong id="score">0</strong></div>
-          <div><span>Best</span><strong id="best">0</strong></div>
-          <div><span>Status</span><strong id="status">Ready</strong></div>
-        </div>
-        <canvas id="board" width="560" height="560" aria-label="Snake game board"></canvas>
-        <p class="hint">Use arrow keys or WASD. On mobile, swipe the board.</p>
-      </section>
-    </main>
-    <script src="script.js"></script>
-  </body>
-</html>
-""",
-        },
-        {
-            "path": "styles.css",
-            "content": """:root {
-  --bg: #071018;
-  --panel: rgba(255, 255, 255, 0.08);
-  --line: rgba(255, 255, 255, 0.14);
-  --text: #f6fbff;
-  --muted: #9fb0c4;
-  --accent: #39ffbc;
-  --danger: #ff4d7d;
-}
-
-* { box-sizing: border-box; }
-body {
-  margin: 0;
-  min-height: 100vh;
-  display: grid;
-  place-items: center;
-  background:
-    radial-gradient(circle at 20% 10%, rgba(57, 255, 188, .24), transparent 24rem),
-    radial-gradient(circle at 80% 20%, rgba(111, 76, 255, .2), transparent 26rem),
-    var(--bg);
-  color: var(--text);
-  font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
-}
-
-.shell {
-  width: min(1120px, calc(100% - 2rem));
-  display: grid;
-  grid-template-columns: .8fr 1.2fr;
-  gap: 1.5rem;
-  align-items: center;
-}
-.intro, .game-card {
-  border: 1px solid var(--line);
-  background: var(--panel);
-  border-radius: 28px;
-  padding: clamp(1rem, 4vw, 2rem);
-  box-shadow: 0 28px 90px rgba(0, 0, 0, .35);
-  backdrop-filter: blur(18px);
-}
-.eyebrow {
-  color: var(--accent);
-  font-size: .78rem;
-  font-weight: 900;
-  letter-spacing: .16em;
-  text-transform: uppercase;
-}
-h1 {
-  margin: 0 0 1rem;
-  font-size: clamp(3rem, 8vw, 6.2rem);
-  line-height: .9;
-  letter-spacing: -0.07em;
-}
-p { color: var(--muted); line-height: 1.7; }
-.controls { display: flex; flex-wrap: wrap; gap: .7rem; margin-top: 1.5rem; }
-button {
-  border: 0;
-  border-radius: 999px;
-  min-height: 46px;
-  padding: 0 1rem;
-  cursor: pointer;
-  color: #04110d;
-  background: var(--accent);
-  font-weight: 900;
-}
-button:nth-child(2) { background: #ffd166; }
-button:nth-child(3) { background: #8bb8ff; }
-.hud {
-  display: grid;
-  grid-template-columns: repeat(3, 1fr);
-  gap: .75rem;
-  margin-bottom: 1rem;
-}
-.hud div {
-  border: 1px solid var(--line);
-  border-radius: 18px;
-  padding: .85rem;
-  background: rgba(255, 255, 255, .06);
-}
-.hud span { display: block; color: var(--muted); font-size: .78rem; font-weight: 900; text-transform: uppercase; letter-spacing: .1em; }
-.hud strong { font-size: 1.5rem; }
-canvas {
-  display: block;
-  width: 100%;
-  aspect-ratio: 1 / 1;
-  border-radius: 22px;
-  border: 1px solid var(--line);
-  background: #02070b;
-}
-.hint { text-align: center; margin-bottom: 0; }
-
-@media (max-width: 820px) {
-  .shell { grid-template-columns: 1fr; padding: 1rem 0; }
-  .hud { grid-template-columns: 1fr; }
-}
-""",
-        },
-        {
-            "path": "script.js",
-            "content": """const canvas = document.getElementById("board");
-const ctx = canvas.getContext("2d");
-const scoreEl = document.getElementById("score");
-const bestEl = document.getElementById("best");
-const statusEl = document.getElementById("status");
-
-const size = 20;
-const cells = canvas.width / size;
-let snake;
-let food;
-let direction;
-let nextDirection;
-let score;
-let timer;
-let running = false;
-let best = Number(localStorage.getItem("snake-best") || 0);
-bestEl.textContent = best;
-
-function reset() {
-  snake = [{ x: 10, y: 10 }, { x: 9, y: 10 }, { x: 8, y: 10 }];
-  direction = { x: 1, y: 0 };
-  nextDirection = direction;
-  score = 0;
-  scoreEl.textContent = score;
-  statusEl.textContent = "Ready";
-  placeFood();
-  draw();
-}
-
-function placeFood() {
-  do {
-    food = {
-      x: Math.floor(Math.random() * cells),
-      y: Math.floor(Math.random() * cells),
-    };
-  } while (snake.some((part) => part.x === food.x && part.y === food.y));
-}
-
-function start() {
-  if (running) return;
-  running = true;
-  statusEl.textContent = "Playing";
-  timer = setInterval(tick, 92);
-}
-
-function pause() {
-  running = false;
-  clearInterval(timer);
-  statusEl.textContent = "Paused";
-}
-
-function restart() {
-  pause();
-  reset();
-  start();
-}
-
-function tick() {
-  direction = nextDirection;
-  const head = snake[0];
-  const next = { x: head.x + direction.x, y: head.y + direction.y };
-
-  if (
-    next.x < 0 || next.x >= cells ||
-    next.y < 0 || next.y >= cells ||
-    snake.some((part) => part.x === next.x && part.y === next.y)
-  ) {
-    gameOver();
-    return;
-  }
-
-  snake.unshift(next);
-  if (next.x === food.x && next.y === food.y) {
-    score += 10;
-    scoreEl.textContent = score;
-    if (score > best) {
-      best = score;
-      bestEl.textContent = best;
-      localStorage.setItem("snake-best", best);
-    }
-    placeFood();
-  } else {
-    snake.pop();
-  }
-  draw();
-}
-
-function gameOver() {
-  pause();
-  statusEl.textContent = "Game Over";
-  draw();
-  ctx.fillStyle = "rgba(2, 7, 11, .68)";
-  ctx.fillRect(0, 0, canvas.width, canvas.height);
-  ctx.fillStyle = "#f6fbff";
-  ctx.font = "bold 42px system-ui";
-  ctx.textAlign = "center";
-  ctx.fillText("Game Over", canvas.width / 2, canvas.height / 2 - 10);
-  ctx.font = "18px system-ui";
-  ctx.fillText("Press restart to play again", canvas.width / 2, canvas.height / 2 + 28);
-}
-
-function draw() {
-  ctx.clearRect(0, 0, canvas.width, canvas.height);
-  ctx.fillStyle = "#02070b";
-  ctx.fillRect(0, 0, canvas.width, canvas.height);
-
-  ctx.strokeStyle = "rgba(255,255,255,.05)";
-  for (let i = 0; i <= cells; i += 1) {
-    ctx.beginPath();
-    ctx.moveTo(i * size, 0);
-    ctx.lineTo(i * size, canvas.height);
-    ctx.stroke();
-    ctx.beginPath();
-    ctx.moveTo(0, i * size);
-    ctx.lineTo(canvas.width, i * size);
-    ctx.stroke();
-  }
-
-  ctx.fillStyle = "#ff4d7d";
-  roundRect(food.x * size + 3, food.y * size + 3, size - 6, size - 6, 7);
-
-  snake.forEach((part, index) => {
-    ctx.fillStyle = index === 0 ? "#39ffbc" : "#18b98a";
-    roundRect(part.x * size + 2, part.y * size + 2, size - 4, size - 4, 6);
-  });
-}
-
-function roundRect(x, y, width, height, radius) {
-  ctx.beginPath();
-  ctx.roundRect(x, y, width, height, radius);
-  ctx.fill();
-}
-
-function setDirection(x, y) {
-  if (direction.x + x === 0 && direction.y + y === 0) return;
-  nextDirection = { x, y };
-}
-
-document.addEventListener("keydown", (event) => {
-  const key = event.key.toLowerCase();
-  if (key === "arrowup" || key === "w") setDirection(0, -1);
-  if (key === "arrowdown" || key === "s") setDirection(0, 1);
-  if (key === "arrowleft" || key === "a") setDirection(-1, 0);
-  if (key === "arrowright" || key === "d") setDirection(1, 0);
-  if (key === " ") running ? pause() : start();
-});
-
-let touchStart = null;
-canvas.addEventListener("touchstart", (event) => {
-  const touch = event.changedTouches[0];
-  touchStart = { x: touch.clientX, y: touch.clientY };
-});
-canvas.addEventListener("touchend", (event) => {
-  if (!touchStart) return;
-  const touch = event.changedTouches[0];
-  const dx = touch.clientX - touchStart.x;
-  const dy = touch.clientY - touchStart.y;
-  if (Math.abs(dx) > Math.abs(dy)) setDirection(Math.sign(dx), 0);
-  else setDirection(0, Math.sign(dy));
-  touchStart = null;
-});
-
-document.getElementById("startButton").addEventListener("click", start);
-document.getElementById("pauseButton").addEventListener("click", pause);
-document.getElementById("restartButton").addEventListener("click", restart);
-
-reset();
-""",
-        },
-    ]
-
-
-def _portfolio_files() -> list[dict]:
-    return [
-        {
-            "path": "index.html",
-            "content": """<!doctype html>
-<html lang="en">
-  <head>
-    <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Premium Portfolio</title>
-    <link rel="preconnect" href="https://fonts.googleapis.com" />
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
-    <link rel="stylesheet" href="styles.css" />
-  </head>
-  <body>
-    <div class="page-glow"></div>
-    <header class="site-header">
-      <a class="brand" href="#home"><span>JX</span> Portfolio</a>
-      <nav class="nav" aria-label="Main navigation">
-        <a href="#work">Work</a>
-        <a href="#skills">Skills</a>
-        <a href="#journey">Journey</a>
-        <a href="#contact">Contact</a>
-      </nav>
-      <button class="theme-toggle" type="button" aria-label="Toggle theme">Theme</button>
-    </header>
-
-    <main>
-      <section id="home" class="hero section">
-        <div class="hero-copy reveal">
-          <p class="eyebrow">Full-stack developer - UI engineer - Problem solver</p>
-          <h1>Building polished digital products that feel fast, useful, and alive.</h1>
-          <p class="hero-text">
-            I craft modern websites, dashboards, automations, and AI-assisted tools with clean interfaces,
-            strong performance, and practical engineering.
-          </p>
-          <div class="hero-actions">
-            <a class="button primary" href="#work">View Projects</a>
-            <a class="button ghost" href="#contact">Hire Me</a>
-          </div>
-          <div class="metrics" aria-label="Portfolio highlights">
-            <div><strong>20+</strong><span>Projects</span></div>
-            <div><strong>3+</strong><span>Years Learning</span></div>
-            <div><strong>100%</strong><span>Build Mindset</span></div>
-          </div>
-        </div>
-        <div class="hero-card reveal">
-          <img class="portrait" src="https://images.unsplash.com/photo-1517841905240-472988babdf9?auto=format&fit=crop&w=900&q=80" alt="Professional developer portrait for the portfolio hero" />
-          <div>
-            <p class="status">Available for projects</p>
-            <h2>Your Name</h2>
-            <p>Developer focused on React, Python, AI assistants, and beautiful product experiences.</p>
-          </div>
-        </div>
-      </section>
-
-      <section id="work" class="section">
-        <div class="section-heading reveal">
-          <p class="eyebrow">Selected Work</p>
-          <h2>Featured projects with real-world polish.</h2>
-        </div>
-        <div class="project-grid">
-          <article class="project-card reveal">
-            <img src="https://images.unsplash.com/photo-1516321318423-f06f85e504b3?auto=format&fit=crop&w=900&q=80" alt="AI desktop assistant interface on a laptop" />
-            <span class="tag">AI Desktop App</span>
-            <h3>Jarvis Assistant</h3>
-            <p>Electron + Python assistant with voice commands, bilingual support, local actions, and code generation.</p>
-            <div class="stack"><span>Electron</span><span>React</span><span>Python</span></div>
-          </article>
-          <article class="project-card reveal">
-            <img src="https://images.unsplash.com/photo-1498050108023-c5249f4df085?auto=format&fit=crop&w=900&q=80" alt="Responsive web platform code and design workspace" />
-            <span class="tag">Web Platform</span>
-            <h3>Portfolio System</h3>
-            <p>A responsive personal brand website with smooth sections, premium cards, and conversion-focused contact.</p>
-            <div class="stack"><span>HTML</span><span>CSS</span><span>JavaScript</span></div>
-          </article>
-          <article class="project-card reveal">
-            <img src="https://images.unsplash.com/photo-1551288049-bebda4e38f71?auto=format&fit=crop&w=900&q=80" alt="Automation dashboard with analytics charts" />
-            <span class="tag">Automation</span>
-            <h3>Workflow Toolkit</h3>
-            <p>Small tools that organize files, speed up repetitive tasks, and make daily computer work easier.</p>
-            <div class="stack"><span>Python</span><span>APIs</span><span>UX</span></div>
-          </article>
-        </div>
-      </section>
-
-      <section id="skills" class="section split">
-        <div class="section-heading reveal">
-          <p class="eyebrow">Capabilities</p>
-          <h2>Design taste plus engineering discipline.</h2>
-          <p>I can turn an idea into a usable product: interface, logic, backend, automation, and deployment flow.</p>
-        </div>
-        <div class="skill-list reveal">
-          <div><span>Frontend</span><strong>React, Vite, Tailwind, animation</strong></div>
-          <div><span>Backend</span><strong>Python, Flask, APIs, automation</strong></div>
-          <div><span>AI Tools</span><strong>Voice assistants, prompts, local actions</strong></div>
-          <div><span>Product</span><strong>UX flows, dashboards, responsive design</strong></div>
-        </div>
-      </section>
-
-      <section id="journey" class="section">
-        <div class="section-heading reveal">
-          <p class="eyebrow">Journey</p>
-          <h2>How I work.</h2>
-        </div>
-        <div class="timeline">
-          <div class="timeline-item reveal"><span>01</span><h3>Understand</h3><p>Clarify the goal, user, and workflow before touching the UI.</p></div>
-          <div class="timeline-item reveal"><span>02</span><h3>Build</h3><p>Create the core experience quickly, then sharpen details and responsiveness.</p></div>
-          <div class="timeline-item reveal"><span>03</span><h3>Improve</h3><p>Test, fix rough edges, and make the final result feel complete.</p></div>
-        </div>
-      </section>
-
-      <section id="contact" class="section contact reveal">
-        <p class="eyebrow">Contact</p>
-        <h2>Let's build something excellent.</h2>
-        <p>Replace these links with your real email, GitHub, LinkedIn, and resume.</p>
-        <div class="contact-actions">
-          <a class="button primary" href="mailto:you@example.com">Email Me</a>
-          <a class="button ghost" href="#" target="_blank" rel="noreferrer">GitHub</a>
-          <a class="button ghost" href="#" target="_blank" rel="noreferrer">LinkedIn</a>
-        </div>
-      </section>
-    </main>
-
-    <footer>(c) <span id="year"></span> Your Name. Built with focus.</footer>
-    <script src="script.js"></script>
-  </body>
-</html>
-""",
-        },
-        {
-            "path": "styles.css",
-            "content": """:root {
-  --bg: #080a12;
-  --panel: rgba(255, 255, 255, 0.07);
-  --panel-strong: rgba(255, 255, 255, 0.12);
-  --text: #f8fbff;
-  --muted: #a8b3c7;
-  --line: rgba(255, 255, 255, 0.14);
-  --accent: #7c3cff;
-  --accent-2: #35e7ff;
-  --shadow: 0 28px 80px rgba(0, 0, 0, 0.34);
-}
-
-* { box-sizing: border-box; }
-html { scroll-behavior: smooth; }
-body {
-  margin: 0;
-  min-height: 100vh;
-  background:
-    radial-gradient(circle at 15% 10%, rgba(124, 60, 255, 0.34), transparent 28rem),
-    radial-gradient(circle at 80% 0%, rgba(53, 231, 255, 0.22), transparent 26rem),
-    var(--bg);
-  color: var(--text);
-  font-family: Inter, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
-}
-
-body.light {
-  --bg: #f4f7fb;
-  --panel: rgba(255, 255, 255, 0.82);
-  --panel-strong: #ffffff;
-  --text: #111827;
-  --muted: #5b6474;
-  --line: rgba(15, 23, 42, 0.12);
-  --shadow: 0 24px 70px rgba(15, 23, 42, 0.13);
-}
-
-a { color: inherit; text-decoration: none; }
-.page-glow {
-  position: fixed;
-  inset: 0;
-  pointer-events: none;
-  background-image: linear-gradient(rgba(255,255,255,.04) 1px, transparent 1px), linear-gradient(90deg, rgba(255,255,255,.04) 1px, transparent 1px);
-  background-size: 54px 54px;
-  mask-image: linear-gradient(to bottom, black, transparent 70%);
-}
-
-.site-header {
-  position: sticky;
-  top: 0;
-  z-index: 20;
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 1rem;
-  padding: 1rem clamp(1rem, 4vw, 4rem);
-  border-bottom: 1px solid var(--line);
-  background: color-mix(in srgb, var(--bg) 82%, transparent);
-  backdrop-filter: blur(18px);
-}
-.brand { font-weight: 800; letter-spacing: -0.04em; }
-.brand span { color: var(--accent-2); }
-.nav { display: flex; gap: clamp(.75rem, 2vw, 1.75rem); color: var(--muted); font-weight: 700; }
-.nav a:hover { color: var(--text); }
-.theme-toggle {
-  width: 42px;
-  height: 42px;
-  border: 1px solid var(--line);
-  border-radius: 50%;
-  background: var(--panel);
-  color: var(--text);
-  cursor: pointer;
-}
-
-.section { width: min(1180px, calc(100% - 2rem)); margin: 0 auto; padding: clamp(4rem, 8vw, 8rem) 0; }
-.hero { display: grid; grid-template-columns: minmax(0, 1.25fr) minmax(300px, .75fr); gap: 2rem; align-items: center; min-height: calc(100vh - 76px); }
-.eyebrow { color: var(--accent-2); font-weight: 800; letter-spacing: .16em; text-transform: uppercase; font-size: .78rem; }
-h1, h2, h3, p { margin-top: 0; }
-h1 { font-size: clamp(3.2rem, 8vw, 6.8rem); line-height: .92; letter-spacing: -.08em; margin-bottom: 1.5rem; }
-h2 { font-size: clamp(2rem, 4vw, 4rem); line-height: 1; letter-spacing: -.06em; margin-bottom: 1rem; }
-h3 { font-size: 1.45rem; margin-bottom: .75rem; }
-.hero-text, .section-heading p, .project-card p, .timeline-item p, .contact p { color: var(--muted); font-size: 1.05rem; line-height: 1.8; }
-
-.button {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  min-height: 48px;
-  padding: 0 1.1rem;
-  border-radius: 999px;
-  border: 1px solid var(--line);
-  font-weight: 800;
-}
-.primary { background: linear-gradient(135deg, var(--accent), var(--accent-2)); color: white; border: 0; }
-.ghost { background: var(--panel); }
-.hero-actions, .contact-actions { display: flex; flex-wrap: wrap; gap: .8rem; margin-top: 1.5rem; }
-
-.metrics { display: grid; grid-template-columns: repeat(3, 1fr); gap: .8rem; margin-top: 2rem; }
-.metrics div, .hero-card, .project-card, .skill-list div, .timeline-item, .contact {
-  border: 1px solid var(--line);
-  background: var(--panel);
-  box-shadow: var(--shadow);
-  backdrop-filter: blur(18px);
-}
-.metrics div { border-radius: 20px; padding: 1rem; }
-.metrics strong { display: block; font-size: 1.5rem; }
-.metrics span, .skill-list span, .tag { color: var(--muted); font-size: .85rem; font-weight: 800; text-transform: uppercase; letter-spacing: .12em; }
-
-.hero-card { border-radius: 34px; padding: 2rem; display: grid; gap: 1.25rem; }
-.portrait {
-  width: 100%;
-  aspect-ratio: 4 / 3;
-  border-radius: 26px;
-  object-fit: cover;
-  display: block;
-}
-.status { color: #77f7c9; font-weight: 800; }
-
-.section-heading { max-width: 760px; margin-bottom: 2rem; }
-.project-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 1rem; }
-.project-card { min-height: 360px; border-radius: 28px; padding: 1.4rem; display: flex; flex-direction: column; justify-content: space-between; gap: .8rem; overflow: hidden; transition: transform .2s ease, border-color .2s ease; }
-.project-card img {
-  width: calc(100% + 2.8rem);
-  margin: -1.4rem -1.4rem .35rem;
-  aspect-ratio: 16 / 10;
-  object-fit: cover;
-  display: block;
-}
-.project-card:hover { transform: translateY(-6px); border-color: color-mix(in srgb, var(--accent-2) 58%, var(--line)); }
-.stack { display: flex; flex-wrap: wrap; gap: .45rem; }
-.stack span { border: 1px solid var(--line); border-radius: 999px; padding: .35rem .65rem; color: var(--muted); font-size: .82rem; font-weight: 700; }
-
-.split { display: grid; grid-template-columns: .85fr 1fr; gap: 2rem; align-items: start; }
-.skill-list { display: grid; gap: .75rem; }
-.skill-list div { border-radius: 22px; padding: 1.1rem; display: grid; gap: .35rem; }
-.timeline { display: grid; grid-template-columns: repeat(3, 1fr); gap: 1rem; }
-.timeline-item { border-radius: 28px; padding: 1.4rem; }
-.timeline-item span { color: var(--accent-2); font-weight: 900; }
-.contact { text-align: center; border-radius: 34px; padding: clamp(2rem, 5vw, 4rem); }
-footer { padding: 2rem; text-align: center; color: var(--muted); border-top: 1px solid var(--line); }
-
-.reveal { opacity: 0; transform: translateY(18px); transition: opacity .7s ease, transform .7s ease; }
-.reveal.visible { opacity: 1; transform: translateY(0); }
-
-@media (max-width: 820px) {
-  .nav { display: none; }
-  .hero, .split, .project-grid, .timeline { grid-template-columns: 1fr; }
-  .hero { min-height: auto; padding-top: 4rem; }
-  .metrics { grid-template-columns: 1fr; }
-}
-""",
-        },
-        {
-            "path": "script.js",
-            "content": """document.getElementById("year").textContent = new Date().getFullYear();
-
-const toggle = document.querySelector(".theme-toggle");
-toggle.addEventListener("click", () => {
-  document.body.classList.toggle("light");
-  localStorage.setItem("portfolio-theme", document.body.classList.contains("light") ? "light" : "dark");
-});
-
-if (localStorage.getItem("portfolio-theme") === "light") {
-  document.body.classList.add("light");
-}
-
-const observer = new IntersectionObserver(
-  (entries) => {
-    entries.forEach((entry) => {
-      if (entry.isIntersecting) {
-        entry.target.classList.add("visible");
-        observer.unobserve(entry.target);
-      }
-    });
-  },
-  { threshold: 0.16 }
-);
-
-document.querySelectorAll(".reveal").forEach((element) => observer.observe(element));
-""",
-        },
-    ]
 
 
 def open_code_workspace() -> str:
@@ -2049,7 +2536,7 @@ def _parse_project_spec(text: str) -> dict:
     try:
         parsed = json.loads(text)
         if isinstance(parsed, dict):
-            return parsed
+            return _normalize_project_spec(parsed)
     except json.JSONDecodeError:
         pass
 
@@ -2058,21 +2545,133 @@ def _parse_project_spec(text: str) -> dict:
         try:
             parsed = json.loads(match.group(0))
             if isinstance(parsed, dict):
-                return parsed
+                return _normalize_project_spec(parsed)
         except json.JSONDecodeError:
             pass
 
-    files = []
-    for index, block in enumerate(re.finditer(r"```([a-zA-Z0-9_+-]*)\s*\n(.*?)```", text, re.DOTALL), start=1):
-        language = block.group(1).lower()
-        extension = LANGUAGE_EXTENSIONS.get(language, "txt")
-        files.append({"path": f"main-{index}.{extension}", "content": block.group(2).strip()})
+    files = _extract_fenced_files(text)
 
     return {
         "project_name": "jarvis-code",
         "summary": "Generated code from the assistant response.",
         "files": files,
     }
+
+
+def _normalize_project_spec(spec: dict) -> dict:
+    normalized = dict(spec)
+    raw_files = spec.get("files")
+    files: list[dict[str, str]] = []
+
+    if isinstance(raw_files, list):
+        for item in raw_files:
+            if isinstance(item, dict):
+                files.append(_normalize_file_item(item))
+    elif isinstance(raw_files, dict):
+        for path, content in raw_files.items():
+            files.append({"path": str(path), "content": str(content or "")})
+
+    top_level_map = {
+        "html": "index.html",
+        "index_html": "index.html",
+        "index.html": "index.html",
+        "css": "style.css",
+        "style_css": "style.css",
+        "styles_css": "styles.css",
+        "style.css": "style.css",
+        "styles.css": "styles.css",
+        "js": "script.js",
+        "javascript": "script.js",
+        "script_js": "script.js",
+        "script.js": "script.js",
+        "app.js": "app.js",
+    }
+    existing = {item["path"].lower().replace("\\", "/") for item in files}
+    for key, path in top_level_map.items():
+        value = spec.get(key)
+        if value and path.lower() not in existing:
+            files.append({"path": path, "content": str(value)})
+            existing.add(path.lower())
+
+    normalized["files"] = _merge_duplicate_file_blocks(files)
+    return normalized
+
+
+def _extract_fenced_files(text: str) -> list[dict[str, str]]:
+    files: list[dict[str, str]] = []
+    used_paths: set[str] = set()
+    blocks = list(re.finditer(r"```([^\n`]*)\n(.*?)```", text, re.DOTALL))
+    for index, block in enumerate(blocks, start=1):
+        info = block.group(1).strip()
+        content = block.group(2).strip()
+        if not content:
+            continue
+        before = text[max(0, block.start() - 180) : block.start()]
+        path = _path_from_code_block(info, before, content, index, used_paths)
+        used_paths.add(path.lower().replace("\\", "/"))
+        files.append({"path": path, "content": content})
+    return _merge_duplicate_file_blocks(files)
+
+
+def _path_from_code_block(info: str, before: str, content: str, index: int, used_paths: set[str]) -> str:
+    candidate = _extract_path_candidate(info) or _extract_path_candidate(before)
+    if candidate:
+        return candidate
+
+    language = info.split()[0].lower() if info else ""
+    extension = LANGUAGE_EXTENSIONS.get(language)
+    lowered = content.lower()
+    if not extension:
+        if "<!doctype" in lowered or "<html" in lowered:
+            extension = "html"
+        elif "{" in content and (":" in content or ";" in content) and any(marker in lowered for marker in ("body", "color", "display", "font-")):
+            extension = "css"
+        elif any(marker in lowered for marker in ("document.", "queryselector", "addeventlistener", "const ", "let ")):
+            extension = "js"
+        else:
+            extension = "txt"
+
+    preferred = {
+        "html": "index.html",
+        "css": "style.css",
+        "js": "script.js",
+        "javascript": "script.js",
+        "json": "data.json",
+        "md": "README.md",
+    }.get(extension, f"main-{index}.{extension}")
+    if preferred.lower() not in used_paths:
+        return preferred
+    return f"main-{index}.{extension}"
+
+
+def _extract_path_candidate(text: str) -> str | None:
+    patterns = (
+        r"(?:path|file|filename)\s*[:=]\s*[`'\"]?([A-Za-z0-9_.\-/\\ ]+\.[A-Za-z0-9]{1,8})",
+        r"[`'\"]([A-Za-z0-9_.\-/\\ ]+\.[A-Za-z0-9]{1,8})[`'\"]",
+        r"\b([A-Za-z0-9_.\-/\\ ]+\.(?:html|css|js|jsx|ts|tsx|json|md|py))\b",
+    )
+    for pattern in patterns:
+        matches = list(re.finditer(pattern, text, re.IGNORECASE))
+        for match in reversed(matches):
+            path = " ".join(match.group(1).strip().split())
+            if path and not path.lower().startswith(("http:", "https:")):
+                return path.replace("\\", "/")
+    return None
+
+
+def _merge_duplicate_file_blocks(files: list[dict[str, str]]) -> list[dict[str, str]]:
+    merged: dict[str, dict[str, str]] = {}
+    order: list[str] = []
+    for item in files:
+        path = str(item.get("path") or "main.txt")
+        key = path.lower().replace("\\", "/")
+        if key not in merged:
+            merged[key] = item
+            order.append(key)
+            continue
+        if len(str(item.get("content") or "")) > len(str(merged[key].get("content") or "")):
+            merged[key] = item
+    return [merged[key] for key in order]
 
 
 def _safe_project_name(value: str) -> str:
@@ -2112,9 +2711,34 @@ def _open_preview(project_dir: Path) -> bool:
     for name in ("index.html", "app.html"):
         candidate = project_dir / name
         if candidate.exists():
+            port = _find_free_port()
+            if _start_static_server(project_dir, port):
+                webbrowser.open(f"http://127.0.0.1:{port}/{name}")
+                return True
             webbrowser.open(candidate.resolve().as_uri())
             return True
     return False
+
+
+def _find_free_port() -> int:
+    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock:
+        sock.bind(("127.0.0.1", 0))
+        return int(sock.getsockname()[1])
+
+
+def _start_static_server(project_dir: Path, port: int) -> bool:
+    try:
+        subprocess.Popen(
+            [sys.executable, "-m", "http.server", str(port), "--bind", "127.0.0.1"],
+            cwd=project_dir,
+            stdin=subprocess.DEVNULL,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+            creationflags=(subprocess.CREATE_NEW_PROCESS_GROUP | subprocess.CREATE_NO_WINDOW) if os.name == "nt" else 0,
+        )
+        return True
+    except (FileNotFoundError, OSError):
+        return False
 
 
 def _open_in_vscode(path: Path) -> bool:

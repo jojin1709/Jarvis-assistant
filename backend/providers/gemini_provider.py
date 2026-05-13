@@ -1,4 +1,5 @@
 from providers.http_client import post_json
+from providers.base_provider import BrowserAIProvider
 
 
 def chat(messages: list[dict[str, str]], api_key: str, model: str, temperature: float, max_tokens: int, response_format=None) -> tuple[str, float]:
@@ -27,3 +28,27 @@ def chat(messages: list[dict[str, str]], api_key: str, model: str, temperature: 
     if not text:
         raise RuntimeError("Gemini returned an empty response.")
     return text, latency
+
+
+class GeminiBrowserProvider(BrowserAIProvider):
+    id = "gemini_web"
+    label = "Gemini Web"
+    url = "https://gemini.google.com/app"
+    login_url = "https://gemini.google.com/app"
+    prompt_selectors = (
+        "rich-textarea div[contenteditable='true']",
+        "div[contenteditable='true']",
+        "textarea",
+    )
+    submit_selectors = (
+        "button[aria-label*='Send' i]",
+        "button[aria-label*='Submit' i]",
+        "button:has(mat-icon:has-text('send'))",
+    )
+    response_selectors = (
+        "message-content",
+        ".response-container",
+        "model-response",
+        "main div:has(p)",
+    )
+    logged_out_markers = ("sign in", "use gemini", "continue with google")

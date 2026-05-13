@@ -414,6 +414,11 @@ class BrowserOperator:
                 }
             )
         remember_event("browser", command[:180], response, {"url": self._state.get("currentUrl", "")})
+        record_action(
+            "browser_command",
+            command,
+            {"response": response, "url": self._state.get("currentUrl", "")},
+        )
 
     def _safe_title(self, page) -> str:
         try:

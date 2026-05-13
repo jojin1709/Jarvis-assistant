@@ -13,6 +13,7 @@ from tools.browser_tool import run_browser_command
 from tools.code_generator import run_code_generation
 from tools.file_tool import run_file_command
 from tools.memory_tool import run_memory_command
+from tools.plugin_tool import run_plugin_command
 from tools.terminal_tool import run_terminal_tool
 from tools.website_generator import run_website_generation
 
@@ -96,9 +97,44 @@ def execute_agent_task(text: str) -> dict[str, object]:
     }
 
 
+def execute_recorded_workflow(workflow: dict) -> dict[str, object]:
+    actions = workflow.get("actions") if isinstance(workflow.get("actions"), list) else []
+    replayable = [
+        action
+        for action in actions
+        if action.get("kind") in {"agent_step", "browser_command", "text_command", "plugin_command"}
+        and str(action.get("label") or "").strip()
+    ]
+    if not replayable:
+        return {"response": "This workflow has no replayable actions yet.", "plan": [], "logs": execution_logs()}
+
+    reset_execution_control()
+    reset_thinking(f"Replaying workflow: {workflow.get('name') or workflow.get('id') or 'Recorded workflow'}")
+    add_log(f"Workflow replay started with {len(replayable)} action(s).", "running")
+
+    results: list[str] = []
+    plan: list[dict[str, str]] = []
+    for action in replayable:
+        checkpoint()
+        label = str(action.get("label") or "").strip()
+        kind = str(action.get("kind") or "agent_step")
+        plan.append({"label": label, "tool": kind, "risk": "recorded"})
+        add_log(f"Replaying: {label} [{kind}]", "running")
+        add_thinking_step("replay", f"Replaying: {label}", "running", kind)
+        result = run_browser_command(label) if kind == "browser_command" else _run_step(label)
+        results.append(result or f"No tool matched recorded action: {label}")
+        add_thinking_step("verification", verification_label(results[-1]), "success" if not looks_failed(results[-1]) else "error", kind)
+
+    response = "\n".join(results)
+    remember_event("workflows", f"Replayed {workflow.get('name') or 'workflow'}", response, {"source_workflow": workflow.get("id")})
+    add_log("Workflow replay complete.", "success")
+    return {"response": response, "plan": plan, "logs": execution_logs()}
+
+
 def _run_step(step: str) -> str:
     for runner in (
         run_memory_command,
+        run_plugin_command,
         run_website_generation,
         run_code_generation,
         run_file_command,

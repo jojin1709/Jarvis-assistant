@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { useOutletContext } from "react-router-dom";
-import { Mic2, Power, Radio, Trash2 } from "lucide-react";
+import { Keyboard, Mic2, Power, Radio, Speaker, Trash2, VolumeX } from "lucide-react";
 
 import Waveform from "../components/Waveform.jsx";
 
@@ -30,11 +30,11 @@ export default function VoicePage() {
           <button
             type="button"
             disabled={!runtime.backendOnline || runtime.busy}
-            onClick={runtime.runVoiceFlow}
+            onClick={runtime.runGlobalPushToTalkFlow}
             className="inline-flex h-10 items-center gap-2 rounded-2xl bg-cyanCore px-4 text-sm font-semibold text-[#021018] disabled:opacity-40"
           >
             <Mic2 size={18} />
-            Start listening
+            Push to talk
           </button>
         </div>
 
@@ -43,14 +43,44 @@ export default function VoicePage() {
         </div>
 
         <div className="mt-4 grid shrink-0 gap-3 sm:grid-cols-3">
-          <VoiceCard icon={Radio} label="Wake word" value={runtime.wakeEnabled ? "Enabled" : "Disabled"} />
+          <VoiceCard icon={Keyboard} label="Hotkey" value={runtime.voiceRuntime?.hotkey || "Space+M"} />
           <VoiceCard icon={Power} label="Mode" value={runtime.mode} />
-          <VoiceCard icon={Mic2} label="Language" value={runtime.languageMode} />
+          <VoiceCard icon={Radio} label="Runtime" value={runtime.voiceRuntime?.enabled ? runtime.voiceRuntime?.mode || "Push-to-talk" : "Disabled"} />
+        </div>
+
+        <div className="mt-3 grid shrink-0 gap-2 sm:grid-cols-4">
+          <VoiceToggle
+            icon={Power}
+            label={runtime.voiceRuntime?.enabled ? "Voice enabled" : "Voice disabled"}
+            active={runtime.voiceRuntime?.enabled}
+            onClick={() => runtime.updateVoiceRuntimeFlow({ enabled: !runtime.voiceRuntime?.enabled })}
+          />
+          <VoiceToggle
+            icon={runtime.voiceRuntime?.muted ? VolumeX : Speaker}
+            label={runtime.voiceRuntime?.muted ? "Muted" : "Speaking"}
+            active={!runtime.voiceRuntime?.muted}
+            onClick={() => runtime.updateVoiceRuntimeFlow({ muted: !runtime.voiceRuntime?.muted })}
+          />
+          <VoiceToggle
+            icon={Mic2}
+            label="Push-to-talk"
+            active={runtime.voiceRuntime?.mode === "push_to_talk"}
+            onClick={() => runtime.updateVoiceRuntimeFlow({ mode: "push_to_talk" })}
+          />
+          <VoiceToggle
+            icon={Radio}
+            label="Continuous"
+            active={runtime.voiceRuntime?.mode === "continuous"}
+            onClick={() => runtime.updateVoiceRuntimeFlow({ mode: "continuous" })}
+          />
         </div>
 
         <div className="mt-4 min-h-0 flex-1 rounded-[22px] border border-line bg-white/[0.025] p-3">
           <p className="text-sm text-textSecondary">Live transcript</p>
           <p className="mt-2 text-lg text-textPrimary">{runtime.transcript}</p>
+          <p className="mt-2 text-sm text-textSecondary">
+            Runtime: {runtime.voiceRuntime?.status || "idle"} · Microphones: {runtime.voiceRuntime?.microphones?.length || 0}
+          </p>
         </div>
       </section>
 
@@ -95,6 +125,21 @@ export default function VoicePage() {
         </div>
       </aside>
     </div>
+  );
+}
+
+function VoiceToggle({ icon: Icon, label, active, onClick }) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className={`flex min-h-12 items-center justify-center gap-2 rounded-2xl border px-3 text-sm transition ${
+        active ? "border-cyanCore/40 bg-cyanCore/10 text-cyanCore" : "border-line bg-white/[0.025] text-textSecondary hover:text-textPrimary"
+      }`}
+    >
+      <Icon size={16} />
+      <span>{label}</span>
+    </button>
   );
 }
 

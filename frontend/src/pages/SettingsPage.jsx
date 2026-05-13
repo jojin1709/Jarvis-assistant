@@ -34,17 +34,20 @@ import {
   clearBrainMemory,
   clearMemory,
   exportMemory,
+  getProviderOrchestration,
   getProviders,
+  openProviderLogin,
   removeProviderKey,
   saveProviderKey,
   setupMemoryStorage,
   testProvider,
+  testProviderOrchestration,
   updateProviderConfig,
   updatePermissions,
   updateProfile,
 } from "../services/api.js";
 
-const providers = ["auto", "groq", "openai", "claude", "ollama", "gemini", "openrouter", "local_llamacpp", "local_whisper", "deepseek", "nvidia", "sarvam"];
+const providers = ["auto", "groq", "openai", "claude", "ollama", "gemini", "g4f", "pollinations", "openrouter", "local_llamacpp", "local_whisper", "deepseek", "nvidia", "sarvam"];
 
 const fallbackPermissions = {
   fullSystemAccess: false,
@@ -54,7 +57,7 @@ const fallbackPermissions = {
   controls: {
     fileSystemAccess: true,
     browserControl: true,
-    terminalExecution: false,
+    terminalExecution: true,
     appControl: true,
     voiceActivation: true,
     automationMode: true,
@@ -81,6 +84,14 @@ const accessControls = [
   ["backgroundListening", "Background Listening", Activity],
 ];
 
+const browserProviderDefaults = [
+  { id: "chatgpt_web", label: "ChatGPT Web", loginUrl: "https://chatgpt.com/" },
+  { id: "claude_web", label: "Claude Web", loginUrl: "https://claude.ai/new" },
+  { id: "gemini_web", label: "Gemini Web", loginUrl: "https://gemini.google.com/app" },
+];
+
+const browserRouteTypes = ["chat", "coding", "reasoning", "research", "automation"];
+
 export default function SettingsPage() {
   const runtime = useOutletContext();
   const permissions = runtime.permissions || fallbackPermissions;
@@ -90,6 +101,7 @@ export default function SettingsPage() {
   const [providerKeys, setProviderKeys] = useState({});
   const [visibleKeys, setVisibleKeys] = useState({});
   const [providerTests, setProviderTests] = useState({});
+  const [browserProviderTests, setBrowserProviderTests] = useState({});
 
   useEffect(() => {
     let active = true;
@@ -219,8 +231,9 @@ export default function SettingsPage() {
 
   async function refreshProviders() {
     try {
-      const result = await getProviders();
+      const [result, orchestration] = await Promise.all([getProviders(), getProviderOrchestration()]);
       runtime.setAiProviders(result.providers || [], result.config || null, result.ollamaModels || []);
+      runtime.setProviderOrchestration(orchestration || {});
       runtime.addExecutionLog({ message: "AI providers refreshed", level: "success" });
     } catch (error) {
       logError(error, "Provider refresh failed");
@@ -231,10 +244,18 @@ export default function SettingsPage() {
     try {
       const result = await updateProviderConfig(patch);
       runtime.setAiProviders(result.providers || [], result.config || null, result.ollamaModels || []);
+      if (patch.browser_providers) {
+        const orchestration = await getProviderOrchestration();
+        runtime.setProviderOrchestration(orchestration || {});
+      }
       runtime.addExecutionLog({ message: "AI provider settings updated", level: "success" });
     } catch (error) {
       logError(error, "AI provider settings update failed");
     }
+  }
+
+  function patchBrowserProviderConfig(patch) {
+    patchProviderConfig({ browser_providers: patch });
   }
 
   async function saveKey(provider) {
@@ -282,11 +303,49 @@ export default function SettingsPage() {
     }
   }
 
+  async function openBrowserProvider(provider) {
+    try {
+      const result = await openProviderLogin(provider);
+      runtime.addExecutionLog({ message: result.response || `Opened ${provider} login session`, level: result.ok ? "success" : "error" });
+      const status = await getProviderOrchestration();
+      runtime.setProviderOrchestration(status || {});
+    } catch (error) {
+      logError(error, `Could not open ${provider} browser session`);
+    }
+  }
+
+  async function runBrowserProviderTest(provider) {
+    setBrowserProviderTests((current) => ({ ...current, [provider]: { status: "running", message: "Testing browser provider..." } }));
+    try {
+      const result = await testProviderOrchestration(provider, "Reply with exactly: JX browser provider online");
+      setBrowserProviderTests((current) => ({
+        ...current,
+        [provider]: {
+          status: result.ok ? "success" : "error",
+          message: result.ok ? `${result.provider} responded (${result.latency_ms || 0} ms)` : result.error,
+        },
+      }));
+    } catch (error) {
+      setBrowserProviderTests((current) => ({
+        ...current,
+        [provider]: { status: "error", message: error?.message || "Browser provider test failed" },
+      }));
+    }
+  }
+
   function openExternal(event, url) {
     if (!window.jxJarvis?.openExternal) return;
     event.preventDefault();
     window.jxJarvis.openExternal(url).catch((error) => logError(error, "Could not open external link"));
   }
+
+  const browserProviderConfig = runtime.providerOrchestration?.config || runtime.aiProviderConfig?.browser_providers || {};
+  const browserEnabledProviders = browserProviderConfig.enabled_providers || {};
+  const browserProviders = (runtime.providerOrchestration?.providers?.length ? runtime.providerOrchestration.providers : browserProviderDefaults).map((provider) => ({
+    ...provider,
+    label: provider.label || browserProviderDefaults.find((item) => item.id === provider.id)?.label || provider.id,
+    enabled: Boolean(browserEnabledProviders[provider.id] ?? provider.enabled),
+  }));
 
   return (
     <div className="settings-compact min-h-full space-y-3">
@@ -414,6 +473,7 @@ export default function SettingsPage() {
                 onEnable={() => patchProviderConfig({ enabled: { [provider.id]: !provider.enabled } })}
                 onSelect={() => patchProviderConfig({ active_provider: provider.id })}
                 onModelChange={(model) => patchProviderConfig({ models: { [provider.id]: model } })}
+                onEndpointChange={(endpoint) => patchProviderConfig({ endpoints: { [provider.id]: endpoint } })}
               />
             ))}
           </div>
@@ -460,6 +520,11 @@ export default function SettingsPage() {
                 checked={Boolean(runtime.aiProviderConfig?.settings?.hybrid_mode ?? true)}
                 onChange={() => patchProviderConfig({ settings: { hybrid_mode: !runtime.aiProviderConfig?.settings?.hybrid_mode } })}
               />
+              <Toggle
+                label="Streaming responses"
+                checked={Boolean(runtime.aiProviderConfig?.settings?.streaming)}
+                onChange={() => patchProviderConfig({ settings: { streaming: !runtime.aiProviderConfig?.settings?.streaming } })}
+              />
             </div>
 
             <div className="rounded-[24px] border border-line bg-white/[0.025] p-4">
@@ -479,6 +544,95 @@ export default function SettingsPage() {
                   </button>
                 ))}
                 {!(runtime.ollamaModels || []).length ? <p className="text-sm text-textSecondary">No Ollama models detected yet.</p> : null}
+              </div>
+            </div>
+          </aside>
+        </div>
+      </section>
+
+      <section className="panel rounded-[28px] p-5">
+        <div className="mb-5 flex flex-wrap items-start justify-between gap-4">
+          <div className="flex items-start gap-3">
+            <div className="rounded-2xl border border-cyanCore/20 bg-cyanCore/10 p-3 text-cyanCore">
+              <Globe2 size={22} />
+            </div>
+            <div>
+              <h2 className="text-xl font-semibold tracking-[-0.03em] text-textPrimary">AI Provider Orchestration</h2>
+              <p className="mt-1 max-w-2xl text-sm leading-6 text-textSecondary">
+                Route Jarvis tasks through persistent browser sessions for ChatGPT, Claude, Gemini, or local fallback without storing web credentials.
+              </p>
+            </div>
+          </div>
+          <span className={`rounded-full border px-3 py-1.5 text-xs font-semibold ${browserProviderConfig.enabled ? "border-cyanCore/30 text-cyanCore" : "border-line text-textSecondary"}`}>
+            {browserProviderConfig.enabled ? "Browser routing active" : "Browser routing off"}
+          </span>
+        </div>
+
+        <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_360px]">
+          <div className="space-y-4">
+            <div className="grid gap-3 md:grid-cols-3">
+              <Toggle
+                label="Enable browser providers"
+                checked={Boolean(browserProviderConfig.enabled)}
+                onChange={() => patchBrowserProviderConfig({ enabled: !browserProviderConfig.enabled })}
+              />
+              <Toggle
+                label="Multi-provider mode"
+                checked={Boolean(browserProviderConfig.multi_provider)}
+                onChange={() => patchBrowserProviderConfig({ multi_provider: !browserProviderConfig.multi_provider })}
+              />
+              <Toggle
+                label="Fallback to API/local"
+                checked={Boolean(browserProviderConfig.fallback_to_api ?? true)}
+                onChange={() => patchBrowserProviderConfig({ fallback_to_api: !(browserProviderConfig.fallback_to_api ?? true) })}
+              />
+            </div>
+
+            <div className="grid gap-3 lg:grid-cols-3">
+              {browserProviders.map((provider) => (
+                <BrowserProviderCard
+                  key={provider.id}
+                  provider={provider}
+                  test={browserProviderTests[provider.id]}
+                  onToggle={() => patchBrowserProviderConfig({ enabled_providers: { [provider.id]: !provider.enabled } })}
+                  onLogin={() => openBrowserProvider(provider.id)}
+                  onTest={() => runBrowserProviderTest(provider.id)}
+                />
+              ))}
+            </div>
+          </div>
+
+          <aside className="space-y-4">
+            <div className="rounded-[24px] border border-line bg-white/[0.025] p-4">
+              <h3 className="text-base font-semibold text-textPrimary">Browser routes</h3>
+              <p className="mt-1 text-sm text-textSecondary">Choose which logged-in web provider handles each autonomous task class.</p>
+              <div className="mt-4 space-y-3">
+                {browserRouteTypes.map((route) => (
+                  <RouteSelect
+                    key={route}
+                    label={route}
+                    value={browserProviderConfig.routes?.[route] || "auto"}
+                    providers={browserProviders}
+                    onChange={(value) => patchBrowserProviderConfig({ routes: { [route]: value } })}
+                  />
+                ))}
+              </div>
+            </div>
+
+            <div className="rounded-[24px] border border-line bg-white/[0.025] p-4">
+              <h3 className="text-base font-semibold text-textPrimary">Recent provider activity</h3>
+              <div className="mt-3 space-y-2">
+                {(runtime.providerOrchestration?.history || []).slice(0, 4).map((entry, index) => (
+                  <div key={`${entry.createdAt || "history"}-${index}`} className="rounded-2xl border border-line bg-[#070B14]/45 p-3">
+                    <p className="truncate text-xs font-semibold text-textPrimary">{entry.result?.provider || "orchestrator"}</p>
+                    <p className={`mt-1 text-xs ${entry.result?.ok ? "text-cyanCore" : "text-red-200"}`}>
+                      {entry.result?.ok ? "completed" : entry.result?.error || "failed"}
+                    </p>
+                  </div>
+                ))}
+                {!(runtime.providerOrchestration?.history || []).length ? (
+                  <p className="rounded-2xl border border-line bg-[#070B14]/45 p-3 text-sm text-textSecondary">No browser provider prompts yet.</p>
+                ) : null}
               </div>
             </div>
           </aside>
@@ -751,6 +905,7 @@ function ProviderCard({
   onEnable,
   onSelect,
   onModelChange,
+  onEndpointChange,
 }) {
   const active = config?.active_provider === provider.id;
   return (
@@ -778,10 +933,66 @@ function ProviderCard({
           id={`${provider.id}-model`}
           value={provider.model || ""}
           onChange={(event) => onModelChange(event.target.value)}
+          list={`${provider.id}-model-options`}
           className="h-10 rounded-2xl border border-line bg-[#070B14]/70 px-3 text-sm text-textPrimary outline-none"
           placeholder="model id"
         />
+        {provider.modelOptions?.length ? (
+          <datalist id={`${provider.id}-model-options`}>
+            {provider.modelOptions.map((model) => (
+              <option key={model} value={model} />
+            ))}
+          </datalist>
+        ) : null}
       </div>
+
+      {provider.endpointOptions?.length || provider.endpoint ? (
+        <div className="mt-3 grid gap-2">
+          <label className="text-xs font-medium text-textSecondary" htmlFor={`${provider.id}-endpoint`}>Base URL</label>
+          <input
+            id={`${provider.id}-endpoint`}
+            value={provider.endpoint || ""}
+            onChange={(event) => onEndpointChange(event.target.value)}
+            list={`${provider.id}-endpoint-options`}
+            className="h-10 rounded-2xl border border-line bg-[#070B14]/70 px-3 text-sm text-textPrimary outline-none"
+            placeholder="https://provider.example/v1"
+          />
+          {provider.endpointOptions?.length ? (
+            <datalist id={`${provider.id}-endpoint-options`}>
+              {provider.endpointOptions.map((endpoint) => (
+                <option key={endpoint} value={endpoint} />
+              ))}
+            </datalist>
+          ) : null}
+        </div>
+      ) : null}
+
+      {provider.taskModelPlan && Object.keys(provider.taskModelPlan).length ? (
+        <div className="mt-3 space-y-2">
+          {Object.entries(provider.taskModelPlan).map(([task, models]) => (
+            <div key={task} className="rounded-2xl border border-line bg-[#070B14]/45 p-3">
+              <p className="text-[11px] font-semibold uppercase text-textSecondary">{task.replaceAll("_", " ")}</p>
+              <p className="mt-1 truncate text-xs text-textPrimary">{models.slice(0, 3).join(" -> ")}</p>
+            </div>
+          ))}
+        </div>
+      ) : null}
+
+      {provider.rateLimits && Object.values(provider.rateLimits).some((limit) => limit.cooldownRemainingSeconds > 0) ? (
+        <div className="mt-3 rounded-2xl border border-amber-300/20 bg-amber-300/10 p-3">
+          <p className="text-[11px] font-semibold uppercase text-amber-100">Groq cooldowns</p>
+          <div className="mt-2 space-y-1">
+            {Object.entries(provider.rateLimits)
+              .filter(([, limit]) => limit.cooldownRemainingSeconds > 0)
+              .slice(0, 4)
+              .map(([model, limit]) => (
+                <p key={model} className="truncate text-xs text-amber-50/90">
+                  {model}: {formatCooldown(limit.cooldownRemainingSeconds)}
+                </p>
+              ))}
+          </div>
+        </div>
+      ) : null}
 
       {provider.requiresKey ? (
         <div className="mt-3">
@@ -837,6 +1048,56 @@ function ProviderCard({
   );
 }
 
+function BrowserProviderCard({ provider, test, onToggle, onLogin, onTest }) {
+  return (
+    <div className={`rounded-[24px] border p-4 ${provider.enabled ? "border-cyanCore/35 bg-cyanCore/10" : "border-line bg-white/[0.025]"}`}>
+      <div className="flex items-start justify-between gap-3">
+        <div className="min-w-0">
+          <div className="flex items-center gap-2">
+            <span className="grid h-9 w-9 shrink-0 place-items-center rounded-2xl bg-white/[0.06] text-sm font-bold text-cyanCore">
+              {provider.label.slice(0, 2).toUpperCase()}
+            </span>
+            <div className="min-w-0">
+              <h3 className="truncate text-sm font-semibold text-textPrimary">{provider.label}</h3>
+              <p className="truncate text-xs text-textSecondary">{provider.profilePath || provider.loginUrl}</p>
+            </div>
+          </div>
+        </div>
+        <Switch checked={provider.enabled} />
+      </div>
+
+      <div className="mt-4 grid grid-cols-2 gap-2 text-xs">
+        <div className="rounded-2xl border border-line bg-[#070B14]/45 p-3">
+          <p className="font-semibold text-textPrimary">Profile</p>
+          <p className="mt-1 text-textSecondary">{provider.profileExists ? "created" : "ready"}</p>
+        </div>
+        <div className="rounded-2xl border border-line bg-[#070B14]/45 p-3">
+          <p className="font-semibold text-textPrimary">Session</p>
+          <p className="mt-1 text-textSecondary">{provider.loginChecked ? (provider.loggedIn ? "logged in" : "login needed") : "not checked"}</p>
+        </div>
+      </div>
+
+      <div className="mt-4 flex flex-wrap gap-2">
+        <button type="button" onClick={onToggle} className="rounded-2xl border border-line px-3 py-2 text-sm text-textSecondary hover:text-textPrimary">
+          {provider.enabled ? "Disable" : "Enable"}
+        </button>
+        <button type="button" onClick={onLogin} className="rounded-2xl bg-cyanCore px-3 py-2 text-sm font-semibold text-[#021018]">
+          Open login
+        </button>
+        <button type="button" onClick={onTest} className="rounded-2xl border border-line px-3 py-2 text-sm text-textSecondary hover:text-textPrimary">
+          Test
+        </button>
+      </div>
+
+      {test ? (
+        <p className={`mt-3 text-xs ${test.status === "error" ? "text-red-200" : test.status === "success" ? "text-cyanCore" : "text-textSecondary"}`}>
+          {test.message}
+        </p>
+      ) : null}
+    </div>
+  );
+}
+
 function RouteSelect({ label, value, providers, onChange }) {
   return (
     <label className="block">
@@ -855,6 +1116,16 @@ function RouteSelect({ label, value, providers, onChange }) {
       </select>
     </label>
   );
+}
+
+function formatCooldown(seconds) {
+  const total = Math.max(0, Number(seconds) || 0);
+  const hours = Math.floor(total / 3600);
+  const minutes = Math.floor((total % 3600) / 60);
+  const secs = Math.floor(total % 60);
+  if (hours) return `${hours}h ${minutes}m`;
+  if (minutes) return `${minutes}m ${secs}s`;
+  return `${secs}s`;
 }
 
 function RangeSetting({ label, value, min, max, step, onChange }) {

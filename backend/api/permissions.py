@@ -12,7 +12,7 @@ RUNTIME_DIR = Path(__file__).resolve().parents[1] / "runtime"
 PERMISSIONS_PATH = RUNTIME_DIR / "permissions.json"
 ACTIVITY_PATH = RUNTIME_DIR / "permission_activity.json"
 HOME = Path.home()
-PERMISSIONS_SCHEMA_VERSION = 4
+PERMISSIONS_SCHEMA_VERSION = 5
 
 DEFAULT_ALLOWED_APPS = [
     "Chrome",
@@ -39,7 +39,7 @@ DEFAULT_PERMISSIONS = {
     "controls": {
         "fileSystemAccess": True,
         "browserControl": True,
-        "terminalExecution": False,
+        "terminalExecution": True,
         "appControl": True,
         "voiceActivation": True,
         "automationMode": True,
@@ -89,6 +89,7 @@ ACTION_RULES = {
     "file.edit": ("fileSystemAccess", "medium"),
     "file.delete": ("fileSystemAccess", "high"),
     "terminal.run": ("terminalExecution", "high"),
+    "terminal.safe": ("terminalExecution", "medium"),
     "automation.run": ("automationMode", "medium"),
     "code.generate": ("fileSystemAccess", "medium"),
     "voice.listen": ("voiceActivation", "low"),
@@ -338,6 +339,8 @@ def _upgrade_permissions(state: dict) -> dict:
         state["allowedApps"] = _dedupe([*DEFAULT_ALLOWED_APPS, *state.get("allowedApps", [])])
     if version < 4:
         state["customApps"] = _dedupe_custom_apps(state.get("customApps", []))
+    if version < 5:
+        state.setdefault("controls", {})["terminalExecution"] = True
     state["schemaVersion"] = PERMISSIONS_SCHEMA_VERSION
     return state
 

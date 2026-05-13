@@ -17,7 +17,7 @@ const initialSetup = {
     fileSystemAccess: true,
     browserControl: true,
     appControl: true,
-    terminalExecution: false,
+    terminalExecution: true,
     notifications: true,
     backgroundStartup: false,
   },

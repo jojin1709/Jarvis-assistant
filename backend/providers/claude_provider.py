@@ -1,4 +1,5 @@
 from providers.http_client import post_json
+from providers.base_provider import BrowserAIProvider
 
 
 def chat(messages: list[dict[str, str]], api_key: str, model: str, temperature: float, max_tokens: int, response_format=None) -> tuple[str, float]:
@@ -29,3 +30,27 @@ def chat(messages: list[dict[str, str]], api_key: str, model: str, temperature: 
     if not text:
         raise RuntimeError("Claude returned an empty response.")
     return text, latency
+
+
+class ClaudeBrowserProvider(BrowserAIProvider):
+    id = "claude_web"
+    label = "Claude Web"
+    url = "https://claude.ai/new"
+    login_url = "https://claude.ai/login"
+    prompt_selectors = (
+        "div[contenteditable='true']",
+        "[aria-label*='prompt' i]",
+        "textarea",
+    )
+    submit_selectors = (
+        "button[aria-label*='Send' i]",
+        "button:has-text('Send')",
+        "form button[type='submit']",
+    )
+    response_selectors = (
+        "[data-testid*='message']",
+        ".font-claude-message",
+        "div.prose",
+        "main div:has(p)",
+    )
+    logged_out_markers = ("sign in", "continue with google", "log in")
