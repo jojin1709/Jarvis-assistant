@@ -77,9 +77,6 @@ export function useJarvisRuntime() {
   }, [store.languageMode]);
 
   useEffect(() => {
-    if (store.settings.startupAudio) {
-      fx.startup();
-    }
     const check = async () => {
       try {
         const result = await health();
@@ -88,15 +85,21 @@ export function useJarvisRuntime() {
         store.setUserName(result.profile?.user_name || "User");
         if (!greetingStarted.current && !window.sessionStorage.getItem("jxJarvisGreeted")) {
           greetingStarted.current = true;
-          window.sessionStorage.setItem("jxJarvisGreeted", "true");
           store.setMode("speaking");
           store.setTranscript("Startup greeting");
           store.setResponse("Preparing workspace...");
-          const greeting = await greetCommand();
-          store.setTranscript(greeting.transcript);
-          store.setResponse(greeting.response);
-          store.addConversation({ transcript: greeting.transcript, response: greeting.response });
-          store.setMode("online");
+          try {
+            const greeting = await greetCommand();
+            window.sessionStorage.setItem("jxJarvisGreeted", "true");
+            store.setTranscript(greeting.transcript);
+            store.setResponse(greeting.response);
+            store.addConversation({ transcript: greeting.transcript, response: greeting.response });
+            store.setMode("online");
+          } catch {
+            greetingStarted.current = false;
+            store.setMode("online");
+            store.setResponse("Backend is online. Greeting will retry shortly.");
+          }
         }
       } catch {
         store.setBackendOnline(false);
@@ -403,7 +406,7 @@ export function useJarvisRuntime() {
               store.setResponse(streamedResponse);
               if (conversationId) store.updateConversation(conversationId, { response: streamedResponse });
             })
-          : await chatCommand(normalizedText, true, languageModeRef.current, conversationContext);
+          : await chatCommand(normalizedText, false, languageModeRef.current, conversationContext);
       fx.response();
       const response = result.response || result.summary || "Done.";
       store.setResponse(response);

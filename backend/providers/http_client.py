@@ -10,8 +10,10 @@ DEFAULT_HEADERS = {
     "User-Agent": "JX-Jarvis/1.0 (+https://github.com/jojin1709/Jarvis-assistant)",
 }
 
+RETRYABLE_STATUS_CODES = {408, 409, 425, 429, 500, 502, 503, 504}
 
-def post_json(url: str, payload: dict, headers: dict | None = None, timeout: int = 60) -> tuple[dict, float]:
+
+def post_json(url: str, payload: dict, headers: dict | None = None, timeout: int = 60, retries: int = 2) -> tuple[dict, float]:
     started = time.perf_counter()
     request = Request(
         url,
@@ -19,29 +21,43 @@ def post_json(url: str, payload: dict, headers: dict | None = None, timeout: int
         headers={**DEFAULT_HEADERS, **(headers or {})},
         method="POST",
     )
-    try:
-        with urlopen(request, timeout=timeout) as response:
-            raw = response.read().decode("utf-8")
-    except HTTPError as error:
-        details = error.read().decode("utf-8", errors="replace")
-        raise RuntimeError(_format_http_error(error.code, details)) from error
-    except URLError as error:
-        raise RuntimeError(str(error.reason)) from error
+    raw = _open_with_retries(request, timeout=timeout, retries=retries)
     return json.loads(raw), round((time.perf_counter() - started) * 1000, 1)
 
 
-def get_json(url: str, headers: dict | None = None, timeout: int = 8) -> tuple[dict, float]:
+def get_json(url: str, headers: dict | None = None, timeout: int = 8, retries: int = 2) -> tuple[dict, float]:
     started = time.perf_counter()
     request = Request(url, headers={**DEFAULT_HEADERS, **(headers or {})}, method="GET")
-    try:
-        with urlopen(request, timeout=timeout) as response:
-            raw = response.read().decode("utf-8")
-    except HTTPError as error:
-        details = error.read().decode("utf-8", errors="replace")
-        raise RuntimeError(_format_http_error(error.code, details)) from error
-    except URLError as error:
-        raise RuntimeError(str(error.reason)) from error
+    raw = _open_with_retries(request, timeout=timeout, retries=retries)
     return json.loads(raw), round((time.perf_counter() - started) * 1000, 1)
+
+
+def _open_with_retries(request: Request, timeout: int, retries: int) -> str:
+    last_error: Exception | None = None
+    for attempt in range(max(0, retries) + 1):
+        try:
+            with urlopen(request, timeout=timeout) as response:
+                return response.read().decode("utf-8")
+        except HTTPError as error:
+            details = error.read().decode("utf-8", errors="replace")
+            if error.code not in RETRYABLE_STATUS_CODES or attempt >= retries:
+                raise RuntimeError(_format_http_error(error.code, details)) from error
+            last_error = error
+            _sleep_before_retry(attempt, error.headers.get("Retry-After"))
+        except URLError as error:
+            if attempt >= retries:
+                raise RuntimeError(str(error.reason)) from error
+            last_error = error
+            _sleep_before_retry(attempt)
+    raise RuntimeError(str(last_error or "Request failed"))
+
+
+def _sleep_before_retry(attempt: int, retry_after: str | None = None) -> None:
+    try:
+        delay = float(retry_after) if retry_after else 0.45 * (2**attempt)
+    except ValueError:
+        delay = 0.45 * (2**attempt)
+    time.sleep(min(delay, 4.0))
 
 
 def _format_http_error(status_code: int, body: str) -> str:

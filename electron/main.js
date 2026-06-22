@@ -27,6 +27,7 @@ let voiceEnabled = true;
 let voiceMuted = false;
 let voiceMode = "push_to_talk";
 let voiceInFlight = false;
+let backendStopping = false;
 
 app.commandLine.appendSwitch("autoplay-policy", "no-user-gesture-required");
 app.setAppUserModelId("com.jx.jarvis");
@@ -39,6 +40,20 @@ if (!gotSingleInstanceLock) {
 
 function assetPath(...parts) {
   return isPackaged ? path.join(process.resourcesPath, ...parts) : path.join(ROOT_DIR, ...parts);
+}
+
+function rendererIndexPath() {
+  const candidates = isPackaged
+    ? [
+        path.join(app.getAppPath(), "frontend", "dist", "index.html"),
+        path.join(process.resourcesPath, "frontend", "dist", "index.html"),
+        path.join(process.resourcesPath, "app.asar", "frontend", "dist", "index.html"),
+      ]
+    : [path.join(ROOT_DIR, "frontend", "dist", "index.html")];
+
+  const found = candidates.find((candidate) => fs.existsSync(candidate));
+  if (found) return found;
+  return candidates[0];
 }
 
 function loadDotEnv() {
@@ -77,19 +92,23 @@ function portIsOpen(port) {
 
 function backendCommand() {
   const packagedBackendExe = path.join(process.resourcesPath, "backend-dist", "jx-jarvis-backend.exe");
-  const venvPython = path.join(BACKEND_DIR, ".venv", "Scripts", "python.exe");
-  const fallbackVenvPython = path.join(BACKEND_DIR, "venv", "Scripts", "python.exe");
 
   if (isPackaged && fs.existsSync(packagedBackendExe)) {
     return { command: packagedBackendExe, args: [], packagedExe: true };
   }
 
   if (process.platform === "win32") {
+    const venvPython = path.join(BACKEND_DIR, ".venv", "Scripts", "python.exe");
+    const fallbackVenvPython = path.join(BACKEND_DIR, "venv", "Scripts", "python.exe");
     if (fs.existsSync(venvPython)) return { command: venvPython, args: [], packagedExe: false };
     if (fs.existsSync(fallbackVenvPython)) return { command: fallbackVenvPython, args: [], packagedExe: false };
     return { command: "py", args: ["-3"], packagedExe: false };
   }
 
+  const venvPython = path.join(BACKEND_DIR, ".venv", "bin", "python");
+  const fallbackVenvPython = path.join(BACKEND_DIR, "venv", "bin", "python");
+  if (fs.existsSync(venvPython)) return { command: venvPython, args: [], packagedExe: false };
+  if (fs.existsSync(fallbackVenvPython)) return { command: fallbackVenvPython, args: [], packagedExe: false };
   return { command: "python3", args: [], packagedExe: false };
 }
 
@@ -122,6 +141,20 @@ async function startBackend() {
   });
 }
 
+async function stopBackendRuntime() {
+  if (backendStopping) return;
+  backendStopping = true;
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 1200);
+  try {
+    await backendRequest("/api/shutdown", { method: "POST", signal: controller.signal });
+  } catch {
+    // The backend may already be gone; process cleanup below is the final guard.
+  } finally {
+    clearTimeout(timeout);
+  }
+}
+
 function stopBackendProcess() {
   if (!backendProcess || backendProcess.killed) return;
 
@@ -143,8 +176,10 @@ function stopBackendProcess() {
 function quitJarvis() {
   if (isQuitting) return;
   isQuitting = true;
-  stopBackendProcess();
-  app.quit();
+  stopBackendRuntime().finally(() => {
+    stopBackendProcess();
+    app.quit();
+  });
 }
 
 function showMainWindow() {
@@ -310,8 +345,7 @@ async function createWindow() {
   mainWindow.on("close", (event) => {
     if (isQuitting) return;
     event.preventDefault();
-    mainWindow.hide();
-    notify("JX JARVIS is still running", "Voice hotkey Space+M remains active in the tray.");
+    quitJarvis();
   });
 
   mainWindow.once("ready-to-show", async () => {
@@ -351,7 +385,7 @@ async function createWindow() {
   if (devUrl) {
     await mainWindow.loadURL(devUrl);
   } else {
-    await mainWindow.loadFile(path.join(APP_DIR, "frontend", "dist", "index.html"));
+    await mainWindow.loadFile(rendererIndexPath());
   }
 }
 
@@ -362,8 +396,7 @@ ipcMain.on("window:maximize", () => {
   else mainWindow.maximize();
 });
 ipcMain.on("window:close", () => {
-  if (isQuitting) return;
-  mainWindow?.hide();
+  quitJarvis();
 });
 ipcMain.handle("window:is-maximized", () => Boolean(mainWindow?.isMaximized()));
 ipcMain.handle("system:get-open-at-login", () => app.getLoginItemSettings().openAtLogin);
@@ -409,8 +442,7 @@ app.on("second-instance", () => {
 });
 
 app.on("window-all-closed", () => {
-  if (isQuitting) stopBackendProcess();
-  if (isQuitting && process.platform !== "darwin") app.quit();
+  quitJarvis();
 });
 
 app.on("activate", () => {
@@ -418,7 +450,12 @@ app.on("activate", () => {
   else showMainWindow();
 });
 
-app.on("before-quit", () => {
+app.on("before-quit", (event) => {
+  if (!isQuitting) {
+    event.preventDefault();
+    quitJarvis();
+    return;
+  }
   isQuitting = true;
   globalShortcut.unregisterAll();
   stopBackendProcess();

@@ -2,15 +2,20 @@ const API_BASE = import.meta.env.VITE_BACKEND_URL || "http://127.0.0.1:8765";
 
 async function request(path, options = {}) {
   const isFormData = options.body instanceof FormData;
-  const response = await fetch(`${API_BASE}${path}`, {
-    headers: isFormData
-      ? options.headers || {}
-      : {
-          "Content-Type": "application/json",
-          ...(options.headers || {}),
-        },
-    ...options,
-  });
+  let response;
+  try {
+    response = await fetch(`${API_BASE}${path}`, {
+      headers: isFormData
+        ? options.headers || {}
+        : {
+            "Content-Type": "application/json",
+            ...(options.headers || {}),
+          },
+      ...options,
+    });
+  } catch (error) {
+    throw new Error(error?.message || "Backend is unreachable.");
+  }
 
   if (!response.ok) {
     const text = await response.text();
@@ -67,11 +72,14 @@ export function pushToTalk(language = "auto", speak = true) {
   });
 }
 
-export function greetCommand() {
-  return request("/api/assistant/greet", { method: "POST" });
+export function greetCommand(speak = false) {
+  return request("/api/assistant/greet", {
+    method: "POST",
+    body: JSON.stringify({ speak }),
+  });
 }
 
-export function chatCommand(text, speak = true, language = "auto", history = []) {
+export function chatCommand(text, speak = false, language = "auto", history = []) {
   return request("/api/assistant/chat", {
     method: "POST",
     body: JSON.stringify({ text, speak, language, history }),
@@ -79,11 +87,16 @@ export function chatCommand(text, speak = true, language = "auto", history = [])
 }
 
 export async function streamChatCommand(text, language = "auto", history = [], onEvent = () => {}) {
-  const response = await fetch(`${API_BASE}/api/assistant/chat/stream`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ text, speak: false, language, history }),
-  });
+  let response;
+  try {
+    response = await fetch(`${API_BASE}/api/assistant/chat/stream`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ text, speak: false, language, history }),
+    });
+  } catch (error) {
+    throw new Error(error?.message || "Backend is unreachable.");
+  }
 
   if (!response.ok || !response.body) {
     const message = await response.text();
@@ -103,19 +116,29 @@ export async function streamChatCommand(text, language = "auto", history = [], o
     buffer = lines.pop() || "";
     for (const line of lines) {
       if (!line.trim()) continue;
-      const event = JSON.parse(line);
+      const event = parseStreamEvent(line);
       onEvent(event);
       if (event.type === "done") finalEvent = event;
+      if (event.type === "error") throw new Error(event.message || "Streaming response failed.");
     }
   }
 
   if (buffer.trim()) {
-    const event = JSON.parse(buffer);
+    const event = parseStreamEvent(buffer);
     onEvent(event);
     if (event.type === "done") finalEvent = event;
+    if (event.type === "error") throw new Error(event.message || "Streaming response failed.");
   }
 
   return finalEvent || { response: "", status: "complete" };
+}
+
+function parseStreamEvent(line) {
+  try {
+    return JSON.parse(line);
+  } catch {
+    return { type: "error", message: "Backend returned malformed streaming data." };
+  }
 }
 
 export function runSystemTask(task) {

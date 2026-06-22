@@ -151,6 +151,25 @@ def set_state(status: str, detail: str) -> None:
     state["detail"] = detail
 
 
+def shutdown_runtime() -> dict:
+    cancelled_jobs = terminal_service.shutdown()
+    try:
+        browser_operator.close()
+    except Exception as error:
+        add_log(f"Browser cleanup warning: {error}", "warning")
+    try:
+        voice_runtime.stop()
+    except Exception as error:
+        add_log(f"Voice cleanup warning: {error}", "warning")
+    set_state("offline", "JX JARVIS is closing.")
+    return {"status": "closing", "terminalCancelled": len(cancelled_jobs)}
+
+
+@router.post("/shutdown")
+def shutdown():
+    return jsonify(shutdown_runtime())
+
+
 @router.get("/health")
 def health():
     return jsonify(status="online", detail="Backend link established.", profile=profile_summary(settings.owner_name))
@@ -300,6 +319,9 @@ def voice_microphones():
 @router.post("/voice/push-to-talk")
 def voice_push_to_talk():
     payload = request.get_json(silent=True) or {}
+    decision = evaluate_permission("voice.listen", "use push-to-talk voice activation")
+    if not decision.allowed:
+        return jsonify(transcript="", response=decision.message, audio_file=None, status="blocked"), 403
     language_mode = normalize_language_mode(payload.get("language", "auto"))
     speak_response = bool(payload.get("speak", True))
     result = push_to_talk(run_text_command, language=language_mode, speak_response=speak_response, source=str(payload.get("source") or "api"))
@@ -352,6 +374,11 @@ def terminal_run():
     cwd = str(payload.get("cwd") or "").strip() or None
     if not command:
         return jsonify(error="Terminal command is required."), 400
+    decision = evaluate_permission("terminal.run", f"run terminal command: {command}", path=cwd, command=command)
+    if not decision.allowed:
+        return jsonify(error=decision.message), 403
+    if decision.requires_confirmation:
+        return jsonify(error=f"Approval required before running terminal command: {command}"), 403
     job = terminal_service.enqueue(command, cwd=cwd)
     add_log(f"Terminal job queued: {command}", "running")
     return jsonify(job.as_dict())
@@ -435,6 +462,11 @@ def platform_execute():
     goal = str(payload.get("goal") or payload.get("text") or "").strip()
     if not goal:
         return jsonify(error="Goal is required."), 400
+    decision = evaluate_permission("automation.run", f"execute platform goal: {goal}", command=goal)
+    if not decision.allowed:
+        return jsonify(error=decision.message), 403
+    if decision.requires_confirmation:
+        return jsonify(error=f"Approval required before executing platform goal: {goal}"), 403
     if bool(payload.get("dryRun", False)):
         return jsonify(run_autonomous_runtime(goal, include_vision=bool(payload.get("includeVision", False)), dry_run=True))
     return jsonify(execute_platform_goal(goal, include_vision=bool(payload.get("includeVision", False))))
@@ -801,6 +833,11 @@ def browser_run():
     text = str(payload.get("text", "")).strip()
     if not text:
         return jsonify(error="Browser task text is required."), 400
+    decision = evaluate_permission("browser.automation", f"run browser automation: {text}", command=text)
+    if not decision.allowed:
+        return jsonify(error=decision.message), 403
+    if decision.requires_confirmation:
+        return jsonify(error=f"Approval required before running browser automation: {text}"), 403
     return jsonify(browser_operator.run_async(text))
 
 
@@ -943,13 +980,16 @@ def startup_greeting() -> str:
 
 @router.post("/assistant/greet")
 def greet():
+    payload = request.get_json(silent=True) or {}
+    speak_response = bool(payload.get("speak", False))
     response = startup_greeting()
     set_state("speaking", "Startup greeting active.")
-    try:
-        audio_file = str(speaker.speak(response))
-    except Exception as error:
-        add_log(f"Startup voice unavailable: {error}", "error")
-        audio_file = None
+    audio_file = None
+    if speak_response:
+        try:
+            audio_file = str(speaker.speak(response))
+        except Exception as error:
+            add_log(f"Startup voice unavailable: {error}", "error")
     set_state("online", "Awaiting next command.")
     return jsonify(transcript="startup greeting", response=response, audio_file=audio_file, status="complete")
 
@@ -1286,7 +1326,7 @@ def _should_use_autonomous_orchestrator(text: str) -> bool:
 def chat():
     payload = request.get_json(silent=True) or {}
     text = str(payload.get("text", "")).strip()
-    speak_response = bool(payload.get("speak", True))
+    speak_response = bool(payload.get("speak", False))
     language_mode = normalize_language_mode(payload.get("language", "auto"))
     conversation_history = payload.get("history")
     if not isinstance(conversation_history, list):
@@ -1490,6 +1530,11 @@ def system_task():
     task_id = str(payload.get("task", "")).strip()
     if task_id not in TASKS:
         return jsonify(error="Unsupported system task."), 400
+    decision = evaluate_permission("app.system", f"run system task: {task_id}", command=task_id)
+    if not decision.allowed:
+        return jsonify(error=decision.message), 403
+    if decision.requires_confirmation:
+        return jsonify(error=f"Approval required before running system task: {task_id}"), 403
 
     set_state("executing", f"Running safe system task: {task_id}.")
     response = run_system_task(task_id)
