@@ -1,13 +1,17 @@
 import { useState } from "react";
 import { useOutletContext } from "react-router-dom";
-import { Bot, Clock3, Plus, Search, SendHorizontal, Trash2, User } from "lucide-react";
+import { Bot, Clock3, Download, Plus, Search, SendHorizontal, Trash2, User } from "lucide-react";
 
 import MarkdownMessage from "../components/MarkdownMessage.jsx";
+import { API_BASE } from "../services/api.js";
+
+const MESSAGES_PER_PAGE = 50;
 
 export default function ChatPage() {
   const runtime = useOutletContext();
   const [text, setText] = useState("");
   const [googleMode, setGoogleMode] = useState(false);
+  const [page, setPage] = useState(1);
 
   async function submit(event) {
     event.preventDefault();
@@ -29,8 +33,28 @@ export default function ChatPage() {
 
   function newChat() {
     runtime.startNewChat();
+    setPage(1);
     runtime.addExecutionLog({ message: "Started a new chat thread", level: "info" });
   }
+
+  async function exportChat() {
+    const response = await fetch(`${API_BASE}/api/memory/export`);
+    if (!response.ok) {
+      runtime.addExecutionLog({ message: "Chat export failed", level: "error" });
+      return;
+    }
+    const blob = await response.blob();
+    const url = URL.createObjectURL(blob);
+    const anchor = document.createElement("a");
+    anchor.href = url;
+    anchor.download = `jarvis-chat-${new Date().toISOString().split("T")[0]}.json`;
+    anchor.click();
+    URL.revokeObjectURL(url);
+    runtime.addExecutionLog({ message: "Chat memory exported", level: "success" });
+  }
+
+  const visibleHistory = runtime.chatHistory.slice(0, MESSAGES_PER_PAGE * page);
+  const hasMore = runtime.chatHistory.length > visibleHistory.length;
 
   return (
     <section className="panel flex h-full min-h-0 flex-col rounded-[24px] p-4">
@@ -48,6 +72,15 @@ export default function ChatPage() {
           >
             <Plus size={16} />
             New chat
+          </button>
+          <button
+            type="button"
+            disabled={runtime.busy}
+            onClick={exportChat}
+            className="inline-flex h-10 items-center gap-2 rounded-2xl border border-line bg-white/[0.035] px-3 text-sm font-medium text-textSecondary transition hover:border-white/20 hover:text-textPrimary disabled:cursor-not-allowed disabled:opacity-40"
+          >
+            <Download size={15} />
+            Export
           </button>
           <button
             type="button"
@@ -87,13 +120,24 @@ export default function ChatPage() {
 
       <div className="min-h-0 flex-1 space-y-3 overflow-auto pr-1">
         {runtime.chatHistory.length ? (
-          [...runtime.chatHistory].reverse().map((item) => (
-            <div key={item.id} className="space-y-3">
-              <ConversationTime createdAt={item.createdAt} />
-              <Bubble role="user" text={item.transcript} />
-              <Bubble role="assistant" text={item.response} />
-            </div>
-          ))
+          <>
+            {hasMore && (
+              <button
+                type="button"
+                onClick={() => setPage((current) => current + 1)}
+                className="w-full rounded-2xl border border-line py-2 text-sm text-textSecondary transition hover:text-textPrimary"
+              >
+                Load older messages ({runtime.chatHistory.length - visibleHistory.length} more)
+              </button>
+            )}
+            {[...visibleHistory].reverse().map((item) => (
+              <div key={item.id} className="space-y-3">
+                <ConversationTime createdAt={item.createdAt} />
+                <Bubble role="user" text={item.transcript} />
+                <Bubble role="assistant" text={item.response} />
+              </div>
+            ))}
+          </>
         ) : (
           <div className="grid min-h-full place-items-center rounded-[24px] border border-line bg-white/[0.025] text-center">
             <div>

@@ -61,6 +61,7 @@ export function useJarvisRuntime() {
   const languageModeRef = useRef(store.languageMode);
   const textCommandInFlight = useRef(false);
   const lastTextCommand = useRef({ text: "", startedAt: 0 });
+  const shownStartupWarnings = useRef(new Set());
 
   const busy = useMemo(
     () => ["listening", "thinking", "speaking", "executing", "indexing", "coding", "memory"].includes(store.mode),
@@ -83,6 +84,13 @@ export function useJarvisRuntime() {
         store.setBackendOnline(true);
         store.setMemory(result.profile || {});
         store.setUserName(result.profile?.user_name || "User");
+        if (result.warnings?.length) {
+          result.warnings.forEach((message) => {
+            if (shownStartupWarnings.current.has(message)) return;
+            shownStartupWarnings.current.add(message);
+            store.addExecutionLog({ message, level: "warning" });
+          });
+        }
         if (!greetingStarted.current && !window.sessionStorage.getItem("jxJarvisGreeted")) {
           greetingStarted.current = true;
           store.setMode("speaking");

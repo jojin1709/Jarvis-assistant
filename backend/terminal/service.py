@@ -104,12 +104,27 @@ class TerminalService:
             process = self._processes.get(job_id)
             job = self._jobs.get(job_id)
         if process and process.poll() is None:
-            process.terminate()
+            _terminate_process_tree(process)
         if job:
             job.status = "cancelled"
             job.ended_at = datetime.now().isoformat(timespec="seconds")
             return job.as_dict()
         return {"error": "Terminal job not found."}
+
+    def shutdown(self) -> list[dict]:
+        with self._lock:
+            running = list(self._processes.items())
+        cancelled: list[dict] = []
+        for job_id, process in running:
+            if process.poll() is None:
+                _terminate_process_tree(process)
+            job = self.job(job_id)
+            if job:
+                job.status = "cancelled"
+                job.ended_at = datetime.now().isoformat(timespec="seconds")
+                job.stderr = (job.stderr + "\nCancelled because JX JARVIS closed.").strip()
+                cancelled.append(job.as_dict())
+        return cancelled
 
     def job(self, job_id: str) -> TerminalJob | None:
         with self._lock:
@@ -194,6 +209,31 @@ def _split_command(command: str) -> list[str]:
     if os.name == "nt":
         return shlex.split(command, posix=False)
     return shlex.split(command)
+
+
+def _terminate_process_tree(process: subprocess.Popen) -> None:
+    if process.poll() is not None:
+        return
+    if os.name == "nt":
+        try:
+            subprocess.run(
+                ["taskkill", "/pid", str(process.pid), "/T", "/F"],
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+                check=False,
+                creationflags=subprocess.CREATE_NO_WINDOW,
+            )
+            return
+        except OSError:
+            pass
+    try:
+        process.terminate()
+        process.wait(timeout=2)
+    except Exception:
+        try:
+            process.kill()
+        except Exception:
+            pass
 
 
 terminal_service = TerminalService()

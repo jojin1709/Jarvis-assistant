@@ -8,7 +8,9 @@ import CompactStatus from "../components/CompactStatus.jsx";
 import LanguageMode from "../components/LanguageMode.jsx";
 import LogoMark from "../components/LogoMark.jsx";
 import WindowTitleBar from "../components/WindowTitleBar.jsx";
+import { useKeyboardShortcuts } from "../hooks/useKeyboardShortcuts.js";
 import { useJarvisRuntime } from "../hooks/useJarvisRuntime.js";
+import { useTheme } from "../hooks/useTheme.js";
 import AssistantOverlay from "../overlays/AssistantOverlay.jsx";
 
 const navigation = [
@@ -28,6 +30,7 @@ export default function AppShell() {
   const contentRef = useRef(null);
   const [now, setNow] = useState(new Date());
   const [overlayOpen, setOverlayOpen] = useState(false);
+  useTheme();
 
   useEffect(() => {
     const timer = window.setInterval(() => setNow(new Date()), 1000);
@@ -44,6 +47,12 @@ export default function AppShell() {
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
   }, [runtime.setCommandPaletteOpen]);
+
+  useKeyboardShortcuts({
+    onFocusChat: () => runtime.setCommandPaletteOpen(true),
+    onNewChat: runtime.startNewChat,
+    onToggleVoice: () => runtime.setWakeEnabled(!runtime.wakeEnabled),
+  });
 
   useEffect(() => {
     if (!window.jxJarvis?.onGlobalCommand) return undefined;

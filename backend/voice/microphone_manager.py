@@ -8,6 +8,11 @@ try:
 except Exception:  # pragma: no cover - depends on host audio drivers and optional package install
     sd = None
 
+try:
+    import speech_recognition as sr
+except Exception:  # pragma: no cover - optional voice dependency
+    sr = None
+
 from app.config import BACKEND_DIR
 
 
@@ -68,3 +73,14 @@ def update_voice_preferences(patch: dict) -> dict:
     PREFERENCES_PATH.parent.mkdir(parents=True, exist_ok=True)
     PREFERENCES_PATH.write_text(json.dumps(preferences, indent=2), encoding="utf-8")
     return preferences
+
+
+def listen_with_vad(recognizer, source, timeout: int = 5, phrase_limit: int = 15):
+    if sr is None:
+        return None
+    recognizer.dynamic_energy_threshold = True
+    recognizer.energy_threshold = 300
+    try:
+        return recognizer.listen(source, timeout=timeout, phrase_time_limit=phrase_limit)
+    except sr.WaitTimeoutError:
+        return None

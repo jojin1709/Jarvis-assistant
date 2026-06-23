@@ -7,6 +7,17 @@ def normalize_workflow(payload: dict) -> dict:
     workflow.setdefault("name", workflow["id"].replace("-", " ").title())
     workflow.setdefault("nodes", [])
     workflow.setdefault("edges", [])
+    if not workflow["nodes"] and workflow.get("steps"):
+        workflow["nodes"] = workflow.get("steps") or []
+    if not workflow["nodes"] and workflow.get("goal"):
+        workflow["nodes"] = [
+            {
+                "id": "goal",
+                "type": "note",
+                "label": "Goal",
+                "config": {"text": str(workflow.get("goal") or "")},
+            }
+        ]
     workflow["nodes"] = [_normalize_node(node, index) for index, node in enumerate(workflow.get("nodes") or [])]
     workflow["edges"] = [_normalize_edge(edge) for edge in workflow.get("edges") or []]
     return workflow

@@ -23,6 +23,7 @@ class TaskScheduler:
         if self._started:
             return
         self._started = True
+        self._schedule_self_improvement()
         threading.Thread(target=self._loop, daemon=True).start()
 
     def list(self) -> dict:
@@ -62,12 +63,37 @@ class TaskScheduler:
             time.sleep(15)
 
     def _run_task(self, task: dict) -> None:
+        if task.get("id") == "__self_improvement__":
+            try:
+                from self_improvement.engine import analyze_execution_quality
+
+                result = analyze_execution_quality()
+                self._events.append({"createdAt": _now(), "taskId": task["id"], "ok": True, "summary": result})
+            except Exception as error:
+                self._events.append({"createdAt": _now(), "taskId": task["id"], "ok": False, "error": str(error)})
+            return
+
         workflow = load_workflow_definition(task.get("workflowId", ""))
         if not workflow:
             self._events.append({"createdAt": _now(), "taskId": task["id"], "ok": False, "error": "Workflow not found."})
             return
         result = execute_workflow_graph(workflow)
         self._events.append({"createdAt": _now(), "taskId": task["id"], "ok": result.get("ok"), "workflowId": workflow["id"]})
+
+    def _schedule_self_improvement(self) -> None:
+        tasks = _load()
+        if any(task.get("id") == "__self_improvement__" for task in tasks):
+            return
+        self.upsert(
+            {
+                "id": "__self_improvement__",
+                "name": "Daily self-improvement analysis",
+                "goal": "analyze execution quality and record behavior patterns",
+                "intervalSeconds": 86400,
+                "nextRunAt": (datetime.now() + timedelta(hours=24)).isoformat(timespec="seconds"),
+                "enabled": True,
+            }
+        )
 
 
 def _normalize_task(task: dict) -> dict:

@@ -31,5 +31,11 @@ export default {
       },
     },
   },
-  plugins: [],
+  plugins: [
+    function ({ addVariant }) {
+      addVariant("theme-light", '[data-theme="light"] &');
+      addVariant("theme-midnight", '[data-theme="midnight"] &');
+      addVariant("theme-graphite", '[data-theme="graphite"] &');
+    },
+  ],
 };

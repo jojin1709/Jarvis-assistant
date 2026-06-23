@@ -1,7 +1,30 @@
 from __future__ import annotations
 
+import os
+
 from skills.registry import list_skills
 
 
+REMOTE_MARKETPLACE_URL = os.getenv("JX_JARVIS_MARKETPLACE_URL", "").strip().rstrip("/")
+
+
 def marketplace_skills() -> dict:
-    return {"local": list_skills().get("skills", {}), "remoteEnabled": False}
+    local = list_skills().get("skills", {})
+    remote_enabled = bool(REMOTE_MARKETPLACE_URL)
+    remote: list[dict] = []
+
+    if remote_enabled:
+        try:
+            from providers.http_client import json_get
+
+            data = json_get(f"{REMOTE_MARKETPLACE_URL}/skills", timeout=5)
+            remote = data.get("skills", []) if isinstance(data, dict) else []
+        except Exception:
+            remote = []
+
+    return {
+        "local": local,
+        "remote": remote,
+        "remoteEnabled": remote_enabled,
+        "remoteUrl": REMOTE_MARKETPLACE_URL,
+    }

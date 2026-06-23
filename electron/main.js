@@ -3,6 +3,7 @@ const fs = require("node:fs");
 const path = require("node:path");
 const { spawn } = require("node:child_process");
 const net = require("node:net");
+const { autoUpdater } = require("electron-updater");
 
 const { createSplashWindow, fadeOutSplash, waitForStartupAudio } = require("./splash");
 
@@ -28,6 +29,27 @@ let voiceMuted = false;
 let voiceMode = "push_to_talk";
 let voiceInFlight = false;
 let backendStopping = false;
+
+function crashLogPath() {
+  return path.join(app.getPath("userData"), "jarvis-crash.log");
+}
+
+function writeCrashLog(message) {
+  const line = `[${new Date().toISOString()}] ${message}\n`;
+  try {
+    fs.appendFileSync(crashLogPath(), line);
+  } catch {
+    // Logging must never block app startup or shutdown.
+  }
+}
+
+process.on("uncaughtException", (error) => {
+  writeCrashLog(`UNCAUGHT: ${error?.stack || error?.message || error}`);
+});
+
+process.on("unhandledRejection", (reason) => {
+  writeCrashLog(`UNHANDLED REJECTION: ${reason?.stack || reason?.message || reason}`);
+});
 
 app.commandLine.appendSwitch("autoplay-policy", "no-user-gesture-required");
 app.setAppUserModelId("com.jx.jarvis");
@@ -433,6 +455,21 @@ if (gotSingleInstanceLock) {
       notify("JX JARVIS voice hotkey", fallbackRegistered ? "Space+M was unavailable, using Alt+M fallback." : "Voice hotkey registration failed.");
     }
     setVoiceRuntime({ enabled: true }).catch((error) => console.error(`[JX Voice] ${error.message}`));
+    if (app.isPackaged) {
+      autoUpdater.checkForUpdatesAndNotify().catch((error) => writeCrashLog(`UPDATE CHECK FAILED: ${error.message}`));
+      autoUpdater.on("update-downloaded", () => {
+        dialog
+          .showMessageBox({
+            type: "info",
+            title: "Update Ready",
+            message: "A new version of JX JARVIS has been downloaded. Restart to apply.",
+            buttons: ["Restart Now", "Later"],
+          })
+          .then(({ response }) => {
+            if (response === 0) autoUpdater.quitAndInstall();
+          });
+      });
+    }
     notify("JX JARVIS is running", "Voice runtime is ready. Press Space+M for push-to-talk.");
   });
 }

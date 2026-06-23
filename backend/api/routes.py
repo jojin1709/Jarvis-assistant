@@ -1,5 +1,6 @@
 import json
 import re
+import threading
 import time
 
 from flask import Blueprint, Response, current_app, jsonify, request, send_file, stream_with_context
@@ -38,6 +39,7 @@ from api.memory_storage import (
     backup_memory,
     clear_brain_memory,
     memory_storage_state,
+    recent_memories,
     remember_conversation,
     setup_memory_storage,
 )
@@ -128,7 +130,7 @@ from api.system_tasks import (
     search_user_files,
     search_youtube,
 )
-from app.config import settings
+from app.config import _startup_warnings, settings
 from terminal.service import terminal_service
 from voice.microphone_manager import list_microphones, update_voice_preferences
 from voice.voice_orchestrator import push_to_talk
@@ -172,12 +174,19 @@ def shutdown():
 
 @router.get("/health")
 def health():
-    return jsonify(status="online", detail="Backend link established.", profile=profile_summary(settings.owner_name))
+    return jsonify(
+        status="online",
+        detail="Backend link established.",
+        profile=profile_summary(settings.owner_name),
+        provider=settings.ai_provider,
+        port=settings.backend_port,
+        warnings=_startup_warnings,
+    )
 
 
 @router.get("/memory")
 def memory():
-    return jsonify(profile=profile_summary(settings.owner_name), context=memory_context())
+    return jsonify(profile=profile_summary(settings.owner_name), context=memory_context(), recent=recent_memories(limit=40))
 
 
 @router.get("/memory/storage")
@@ -666,13 +675,18 @@ def providers_config_update():
 def providers_key_set():
     payload = request.get_json(silent=True) or {}
     provider = str(payload.get("provider") or "").strip().lower()
-    api_key = str(payload.get("apiKey") or "").strip()
+    api_key = str(payload.get("apiKey") or payload.get("api_key") or "").strip()
     if not provider or not api_key:
         return jsonify(error="Provider and API key are required."), 400
     set_provider_key(provider, api_key)
     update_provider_settings({"enabled": {provider: True}})
     add_log(f"AI provider key updated: {provider}", "success")
     return jsonify(list_provider_status())
+
+
+@router.post("/providers/save-key")
+def providers_save_key_compat():
+    return providers_key_set()
 
 
 @router.delete("/providers/key/<provider>")
@@ -822,6 +836,41 @@ def coding_run_script():
     return jsonify(run_project_script(payload.get("path"), str(payload.get("script") or "build")))
 
 
+def _stream_task(task_fn, *args, **kwargs):
+    result_holder = {}
+    error_holder = {}
+
+    def run():
+        try:
+            result_holder["data"] = task_fn(*args, **kwargs)
+        except Exception as error:
+            error_holder["error"] = str(error)
+
+    thread = threading.Thread(target=run, daemon=True)
+    thread.start()
+
+    elapsed = 0
+    while thread.is_alive():
+        yield f"data: {json.dumps({'type': 'progress', 'elapsed': elapsed})}\n\n"
+        time.sleep(1)
+        elapsed += 1
+
+    if error_holder:
+        yield f"data: {json.dumps({'type': 'error', 'error': error_holder['error']})}\n\n"
+    else:
+        yield f"data: {json.dumps({'type': 'done', 'result': result_holder.get('data', {})})}\n\n"
+
+
+@router.post("/coding/run-script/stream")
+def coding_run_script_stream():
+    payload = request.get_json(silent=True) or {}
+    return Response(
+        stream_with_context(_stream_task(run_project_script, payload.get("path"), str(payload.get("script") or "build"))),
+        mimetype="text/event-stream",
+        headers={"X-Accel-Buffering": "no", "Cache-Control": "no-cache"},
+    )
+
+
 @router.get("/browser/state")
 def browser_state():
     return jsonify(browser_operator.state())
@@ -936,7 +985,15 @@ def research_summarize():
 @router.post("/sandbox/run")
 def sandbox_run():
     payload = request.get_json(silent=True) or {}
-    return jsonify(run_in_docker(str(payload.get("command") or ""), payload.get("workspace") or ".", image=str(payload.get("image") or "python:3.11-slim")))
+    command = str(payload.get("command") or "").strip()
+    workspace = str(payload.get("workspace") or ".").strip() or "."
+    if not command:
+        return jsonify(ok=False, error="No command provided."), 400
+    from sandbox.executor import docker_available
+
+    if not docker_available():
+        return jsonify(ok=False, error="Docker is not installed. Install Docker Desktop to use the sandbox.", sandbox="docker"), 503
+    return jsonify(run_in_docker(command, workspace, image=str(payload.get("image") or "python:3.11-slim")))
 
 
 @router.get("/self-improvement")

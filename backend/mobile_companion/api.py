@@ -1,11 +1,15 @@
 from __future__ import annotations
 
 import json
+import os
+import secrets
+import socket
 from datetime import datetime
 from pathlib import Path
 
 
 NOTIFICATIONS_PATH = Path(__file__).resolve().parents[1] / "runtime" / "mobile_notifications.json"
+_pairing_token = ""
 
 
 def push_mobile_notification(title: str, body: str, level: str = "info", action: dict | None = None) -> dict:
@@ -25,7 +29,49 @@ def push_mobile_notification(title: str, body: str, level: str = "info", action:
 
 
 def mobile_state() -> dict:
-    return {"notifications": list(reversed(_load()[-80:])), "capabilities": ["monitor", "approve", "notify"]}
+    enabled = os.getenv("JX_JARVIS_MOBILE_ENABLED", "false").strip().lower() == "true"
+    notifications = list(reversed(_load()[-80:]))
+    if not enabled:
+        return {
+            "enabled": False,
+            "reason": "Set JX_JARVIS_MOBILE_ENABLED=true in .env to activate mobile companion.",
+            "notifications": notifications,
+            "capabilities": ["monitor", "approve", "notify"],
+        }
+
+    host = _local_ip()
+    port = int(os.getenv("JX_JARVIS_BACKEND_PORT", "8765"))
+    token = _get_or_create_token()
+    return {
+        "enabled": True,
+        "host": host,
+        "port": port,
+        "endpoint": f"http://{host}:{port}",
+        "pairingToken": token,
+        "qrData": f"jxjarvis://{host}:{port}?token={token}",
+        "notifications": notifications,
+        "capabilities": ["monitor", "approve", "notify"],
+    }
+
+
+def _local_ip() -> str:
+    sock = None
+    try:
+        sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        sock.connect(("8.8.8.8", 80))
+        return sock.getsockname()[0]
+    except Exception:
+        return "127.0.0.1"
+    finally:
+        if sock:
+            sock.close()
+
+
+def _get_or_create_token() -> str:
+    global _pairing_token
+    if not _pairing_token:
+        _pairing_token = secrets.token_urlsafe(16)
+    return _pairing_token
 
 
 def _load() -> list[dict]:

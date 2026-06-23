@@ -25,6 +25,11 @@
     "productName": "JX JARVIS",
     "copyright": "Copyright © 2026 JX JARVIS",
     "asar": true,
+    "publish": {
+      "provider": "github",
+      "owner": "jojin1709",
+      "repo": "Jarvis-assistant"
+    },
     "directories": {
       "output": "release",
       "buildResources": "assets"
@@ -137,8 +142,11 @@
   "devDependencies": {
     "concurrently": "^9.1.2",
     "cross-env": "^7.0.3",
-    "electron-builder": "^25.1.8",
     "electron": "^34.2.0",
+    "electron-builder": "^25.1.8",
     "wait-on": "^8.0.2"
+  },
+  "dependencies": {
+    "electron-updater": "^6.8.9"
   }
 }

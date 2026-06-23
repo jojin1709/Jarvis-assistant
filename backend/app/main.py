@@ -1,12 +1,25 @@
 import logging
 import atexit
 import signal
+from logging.handlers import RotatingFileHandler
 
 from flask import Flask, jsonify
 from flask_cors import CORS
 
 from api.routes import router, shutdown_runtime
-from app.config import settings
+from app.config import BACKEND_DIR, settings
+
+
+_log_dir = BACKEND_DIR / "runtime" / "logs"
+_log_dir.mkdir(parents=True, exist_ok=True)
+logging.basicConfig(
+    level=logging.INFO,
+    handlers=[
+        RotatingFileHandler(_log_dir / "jarvis.log", maxBytes=5 * 1024 * 1024, backupCount=3),
+        logging.StreamHandler(),
+    ],
+    format="%(asctime)s %(levelname)s %(name)s: %(message)s",
+)
 
 
 app = Flask(__name__)

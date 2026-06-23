@@ -83,3 +83,34 @@ class Settings:
 settings = Settings()
 settings.speech_dir.mkdir(parents=True, exist_ok=True)
 settings.uploads_dir.mkdir(parents=True, exist_ok=True)
+
+
+def validate_settings(s: Settings) -> list[str]:
+    warnings_list: list[str] = []
+    key_map = {
+        "groq": ("groq_api_key", "GROQ_API_KEY"),
+        "openai": ("openai_api_key", "OPENAI_API_KEY"),
+        "claude": ("anthropic_api_key", "ANTHROPIC_API_KEY"),
+        "gemini": ("gemini_api_key", "GEMINI_API_KEY"),
+        "deepseek": ("deepseek_api_key", "DEEPSEEK_API_KEY"),
+        "nvidia": ("nvidia_api_key", "NVIDIA_API_KEY"),
+        "sarvam": ("sarvam_api_key", "SARVAM_API_KEY"),
+    }
+
+    if s.ai_provider in key_map:
+        attr, env_name = key_map[s.ai_provider]
+        key_value = str(getattr(s, attr, "") or "")
+        if not key_value or "your_" in key_value.lower():
+            warnings_list.append(
+                f"{env_name} is not set. AI responses may fail until you add the key in .env or Settings."
+            )
+
+    return warnings_list
+
+
+_startup_warnings = validate_settings(settings)
+if _startup_warnings:
+    import logging as _logging
+
+    for _warning in _startup_warnings:
+        _logging.getLogger(__name__).warning(_warning)
