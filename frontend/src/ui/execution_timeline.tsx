@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { SkeletonCard } from "../components/SkeletonCard";
 
 interface TraceEvent {
   id?: string;
@@ -42,7 +43,7 @@ export default function ExecutionTimeline({ events: propEvents = [] }: { events?
     return (
       <div className="grid gap-2">
         {Array.from({ length: 4 }).map((_, index) => (
-          <div key={index} className="h-10 animate-pulse rounded-xl bg-white/5" />
+          <SkeletonCard key={index} lines={1} className="py-3" />
         ))}
       </div>
     );

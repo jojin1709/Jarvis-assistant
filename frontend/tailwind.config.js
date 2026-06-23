@@ -35,6 +35,7 @@ export default {
     function ({ addVariant }) {
       addVariant("theme-light", '[data-theme="light"] &');
       addVariant("theme-midnight", '[data-theme="midnight"] &');
+      addVariant("theme-glass", '[data-theme="glass"] &');
       addVariant("theme-graphite", '[data-theme="graphite"] &');
     },
   ],

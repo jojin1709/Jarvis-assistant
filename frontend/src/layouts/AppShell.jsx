@@ -1,6 +1,6 @@
 import { NavLink, Outlet, useLocation } from "react-router-dom";
 import { AppWindow, Bell, Bot, Files, Home, MessageCircle, Mic2, MonitorUp, Settings, Sparkles, Workflow } from "lucide-react";
-import { useEffect, useRef, useState } from "react";
+import { Component, useEffect, useRef, useState } from "react";
 
 import CommandConsole from "../components/CommandConsole.jsx";
 import CommandPalette from "../components/CommandPalette.jsx";
@@ -99,7 +99,9 @@ export default function AppShell() {
             </header>
 
             <div ref={contentRef} className="min-h-0 flex-1 overflow-y-auto overflow-x-hidden pr-1">
-              <Outlet context={runtime} />
+              <ErrorBoundary>
+                <Outlet context={runtime} />
+              </ErrorBoundary>
             </div>
 
             <div className="shrink-0">
@@ -118,6 +120,32 @@ export default function AppShell() {
       <AssistantOverlay open={overlayOpen} onClose={() => setOverlayOpen(false)} runtime={runtime} />
     </main>
   );
+}
+
+class ErrorBoundary extends Component {
+  state = { error: null };
+
+  static getDerivedStateFromError(error) {
+    return { error };
+  }
+
+  render() {
+    if (this.state.error) {
+      return (
+        <div className="flex h-full items-center justify-center p-8 text-center">
+          <div>
+            <p className="font-semibold text-textPrimary">Something went wrong</p>
+            <p className="mt-2 text-sm text-textSecondary">{this.state.error.message}</p>
+            <button className="mt-4 rounded-xl bg-cyanCore/10 px-4 py-2 text-sm text-cyanCore" onClick={() => this.setState({ error: null })}>
+              Try again
+            </button>
+          </div>
+        </div>
+      );
+    }
+
+    return this.props.children;
+  }
 }
 
 function Sidebar({ userName }) {

@@ -57,7 +57,7 @@ New integrated systems include:
 - OCR-backed screenshot analysis and UI/popup detection.
 - Permission-checked desktop automation.
 - Graph workflow builder/runtime with recurring scheduler support.
-- SQLite knowledge base with local deterministic embeddings.
+- SQLite knowledge base with `sentence-transformers` semantic embeddings when available, plus a deterministic local fallback for unsupported Python runtimes.
 - Behavior learning and execution quality scoring.
 - Docker sandbox execution for generated code and tools.
 - Internet research helpers and live codebase mapping.
@@ -343,7 +343,8 @@ JX-JARVIS/
 
 - Windows 10 or Windows 11
 - Node.js 20+
-- Python 3.11+
+- Python 3.11 or 3.12 recommended for the full backend feature set
+- Python 3.14 can run the core backend, but optional ML packages may be skipped
 - Git
 - Chrome or Microsoft Edge for visible browser automation
 - Microphone access for voice features
@@ -375,6 +376,8 @@ python -m venv .venv
 .\.venv\Scripts\python.exe -m playwright install chromium
 cd ..
 ```
+
+`sentence-transformers` enables higher-quality semantic knowledge search on Python versions below 3.14. On Python 3.14, Jarvis falls back to deterministic local embeddings so the backend still starts cleanly.
 
 Create your private environment file:
 

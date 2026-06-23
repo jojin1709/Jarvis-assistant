@@ -940,6 +940,7 @@ def agent_execute():
     guarded = guard_action("automation.run", f"run autonomous task: {text}", run)
     if result is None:
         result = {"response": guarded, "plan": [], "logs": execution_logs()}
+    remember_conversation(text, str(result.get("response") or ""), {"source": "agent-execute"})
     set_state("online", "Awaiting next command.")
     return jsonify(result)
 

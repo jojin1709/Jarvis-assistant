@@ -1,6 +1,6 @@
 # JX JARVIS Backend
 
-Python Flask backend for microphone input, SpeechRecognition or Sarvam Saaras transcription, Groq, Sarvam, DeepSeek, or NVIDIA AI responses, Edge-TTS or Sarvam Bulbul synthesis, Sarvam document intelligence, file intake, and safe local system actions.
+Python Flask backend for microphone input, SpeechRecognition or Sarvam Saaras transcription, Groq, Sarvam, DeepSeek, or NVIDIA AI responses, Edge-TTS or Sarvam Bulbul synthesis, Sarvam document intelligence, file intake, semantic knowledge search, and safe local system actions.
 
 Key endpoints:
 
@@ -30,3 +30,5 @@ py -3 -m venv .venv
 pip install -r requirements.txt
 py -3 -m app.main
 ```
+
+Use Python 3.11 or 3.12 for the full dependency set. The backend has fallbacks for newer runtimes, but optional ML packages such as `sentence-transformers` may be skipped on Python 3.14.

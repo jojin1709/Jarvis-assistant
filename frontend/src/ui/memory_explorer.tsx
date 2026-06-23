@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { SkeletonCard } from "../components/SkeletonCard";
 
 interface MemoryItem {
   id?: number | string;
@@ -42,7 +43,7 @@ export default function MemoryExplorer({ memories: propMemories = [] }: { memori
     return text.includes(search.toLowerCase());
   });
 
-  if (loading) return <div className="h-10 animate-pulse rounded-xl bg-white/5" />;
+  if (loading) return <SkeletonCard lines={2} />;
 
   return (
     <div className="grid gap-2">

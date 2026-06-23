@@ -1,9 +1,10 @@
 import asyncio
+import ctypes
+import sys
 import time
 from pathlib import Path
 
 import edge_tts
-from playsound import playsound
 
 from api.sarvam_services import synthesize_sarvam_speech
 from app.config import settings
@@ -39,9 +40,36 @@ class EdgeSpeaker:
         return output_path
 
     def play(self, audio_path: Path) -> None:
-        playsound(str(audio_path), block=True)
+        if sys.platform == "win32":
+            _play_windows(audio_path)
 
     def speak(self, text: str, language: str = "en") -> Path:
         audio_path = self.synthesize(text, language=language)
         self.play(audio_path)
         return audio_path
+
+
+def _play_windows(audio_path: Path) -> None:
+    alias = f"jarvis_audio_{int(time.time() * 1000)}"
+    winmm = ctypes.windll.winmm
+    path = str(audio_path.resolve())
+
+    def mci(command: str) -> int:
+        return winmm.mciSendStringW(command, None, 0, None)
+
+    opened = mci(f'open "{path}" type mpegvideo alias {alias}') == 0
+    if not opened:
+        opened = mci(f'open "{path}" alias {alias}') == 0
+    if not opened:
+        return
+    try:
+        if mci(f"play {alias}") != 0:
+            return
+        buffer = ctypes.create_unicode_buffer(64)
+        while True:
+            winmm.mciSendStringW(f"status {alias} mode", buffer, len(buffer), None)
+            if buffer.value != "playing":
+                break
+            time.sleep(0.05)
+    finally:
+        mci(f"close {alias}")
